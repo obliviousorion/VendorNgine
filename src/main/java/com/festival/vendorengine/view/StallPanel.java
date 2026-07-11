@@ -165,12 +165,8 @@ public class StallPanel extends JPanel {
 
     private JButton createStyledButton(String text) {
         JButton btn = new JButton(text);
-        btn.setFont(UiTheme.BUTTON);
-        btn.setPreferredSize(new Dimension(140, 32));
-        btn.setFocusPainted(false);
-        btn.setBackground(UiTheme.PANEL);
-        btn.setForeground(UiTheme.FG);
-        btn.setBorder(BorderFactory.createLineBorder(UiTheme.ACCENT, 1));
+        UiTheme.styleButton(btn);
+        btn.setPreferredSize(new Dimension(140, 36));
         return btn;
     }
 

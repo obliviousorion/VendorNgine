@@ -119,12 +119,8 @@ public class LoginView extends JFrame {
         actionPanel.setBackground(UiTheme.BG);
 
         btnEnter = new JButton("Enter Dashboard");
-        btnEnter.setFont(UiTheme.BUTTON);
+        UiTheme.styleButton(btnEnter);
         btnEnter.setPreferredSize(new Dimension(-1, 40));
-        btnEnter.setBackground(UiTheme.PANEL);
-        btnEnter.setForeground(UiTheme.FG);
-        btnEnter.setBorder(BorderFactory.createLineBorder(UiTheme.ACCENT, 1));
-        btnEnter.setFocusPainted(false);
         actionPanel.add(btnEnter, BorderLayout.CENTER);
 
         root.add(actionPanel, BorderLayout.SOUTH);
