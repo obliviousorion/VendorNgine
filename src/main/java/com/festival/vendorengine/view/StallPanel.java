@@ -37,6 +37,11 @@ public class StallPanel extends JPanel {
     private final Timer elapsedTimer;
     private String lastSelectedOrderId = null;
 
+    // Detail Panel Components
+    private JPanel detailCard;
+    private JLabel lblDetailTitle;
+    private JLabel lblDetailItems;
+
     // Action buttons
     private JButton btnAccept;
     private JButton btnReady;
@@ -94,34 +99,56 @@ public class StallPanel extends JPanel {
         scrollPane.getViewport().setBackground(UiTheme.BG);
         add(scrollPane, BorderLayout.CENTER);
 
-        // 3. Right/Bottom (Operations Panel)
-        JPanel operationsPanel = new JPanel(new BorderLayout(5, 5));
-        operationsPanel.setBackground(UiTheme.BG);
+        // 3. Expandable Detail Card (Bottom Panel)
+        detailCard = new JPanel(new BorderLayout(20, 10));
+        detailCard.setBackground(UiTheme.PANEL);
+        detailCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(2, 0, 0, 0, UiTheme.ACCENT),
+                BorderFactory.createEmptyBorder(15, 20, 15, 20)
+        ));
+        detailCard.setVisible(false); // Hidden by default; slides up on row selection
 
-        JPanel buttonGrid = new JPanel(new GridLayout(4, 1, 10, 10));
-        buttonGrid.setBackground(UiTheme.BG);
+        // Left section: Title & Ordered Items list
+        JPanel infoPanel = new JPanel(new java.awt.GridBagLayout());
+        infoPanel.setBackground(UiTheme.PANEL);
+        java.awt.GridBagConstraints gbc = new java.awt.GridBagConstraints();
+        gbc.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.gridx = 0;
+
+        lblDetailTitle = new JLabel("Order Details");
+        lblDetailTitle.setFont(UiTheme.SUBTITLE);
+        lblDetailTitle.setForeground(UiTheme.ACCENT);
+        gbc.gridy = 0;
+        gbc.insets = new java.awt.Insets(0, 0, 4, 0);
+        infoPanel.add(lblDetailTitle, gbc);
+
+        lblDetailItems = new JLabel("No items selected");
+        lblDetailItems.setFont(UiTheme.BODY);
+        lblDetailItems.setForeground(UiTheme.FG);
+        gbc.gridy = 1;
+        gbc.insets = new java.awt.Insets(0, 0, 0, 0);
+        infoPanel.add(lblDetailItems, gbc);
+
+        detailCard.add(infoPanel, BorderLayout.CENTER);
+
+        // Right section: Horizontal row of action buttons
+        JPanel actionsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        actionsPanel.setBackground(UiTheme.PANEL);
 
         btnAccept = createStyledButton("Accept Order");
         btnReady = createStyledButton("Mark Ready");
         btnServe = createStyledButton("Serve Order");
         btnCancel = createStyledButton("Cancel Order");
 
-        buttonGrid.add(btnAccept);
-        buttonGrid.add(btnReady);
-        buttonGrid.add(btnServe);
-        buttonGrid.add(btnCancel);
+        actionsPanel.add(btnAccept);
+        actionsPanel.add(btnReady);
+        actionsPanel.add(btnServe);
+        actionsPanel.add(btnCancel);
 
-        // Add a title to the actions panel
-        TitledBorder actionsBorder = BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(UiTheme.PANEL), "Actions");
-        actionsBorder.setTitleColor(UiTheme.FG_MUTED);
-        actionsBorder.setTitleFont(UiTheme.BODY);
-        JPanel actionsContainer = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        actionsContainer.setBackground(UiTheme.BG);
-        actionsContainer.setBorder(actionsBorder);
-        actionsContainer.add(buttonGrid);
-        
-        add(actionsContainer, BorderLayout.EAST);
+        detailCard.add(actionsPanel, BorderLayout.EAST);
+
+        add(detailCard, BorderLayout.SOUTH);
 
         // 4. Wire selection listener for button state toggling and tracking selected ID
         table.getSelectionModel().addListSelectionListener(e -> {
@@ -200,11 +227,44 @@ public class StallPanel extends JPanel {
             int modelRow = table.convertRowIndexToModel(selectedRow);
             Order order = tableModel.getOrderAt(modelRow);
             if (order != null) {
+                // 1. Update button states
                 updateButtonStates(order.getStatus());
+
+                // 2. Populate detail panel info
+                String shortId = order.getOrderId();
+                if (shortId.length() > 8) {
+                    shortId = shortId.substring(0, 8) + "...";
+                }
+                lblDetailTitle.setText("Order Detail: #" + shortId + " (" + order.getPriority() + " Priority) — [" + order.getStatus() + "]");
+                
+                StringBuilder sb = new StringBuilder("<html><b>Items Summary:</b> ");
+                for (int i = 0; i < order.getItems().size(); i++) {
+                    Order.LineItem item = order.getItems().get(i);
+                    sb.append(item.getItemName()).append(" x").append(item.getQuantity());
+                    if (i < order.getItems().size() - 1) {
+                        sb.append(", ");
+                    }
+                }
+                sb.append("</html>");
+                lblDetailItems.setText(sb.toString());
+
+                // 3. Expand card dynamically
+                if (!detailCard.isVisible()) {
+                    detailCard.setVisible(true);
+                    revalidate();
+                    repaint();
+                }
                 return;
             }
         }
+        
+        // No row selected: collapse details card
         disableAllButtons();
+        if (detailCard.isVisible()) {
+            detailCard.setVisible(false);
+            revalidate();
+            repaint();
+        }
     }
 
     private void updateButtonStates(OrderStatus status) {
