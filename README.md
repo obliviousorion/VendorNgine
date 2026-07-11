@@ -2,6 +2,8 @@
 
 This project implements a high-concurrency vendor order management system designed to resolve Django/WebSocket bottleneck issues during peak hours and provide offline resilience for vendor order processing at a festival. It is built entirely in Java 17 using a layered architecture conforming to the Model-View-Controller (MVC) pattern, utilizing Java Swing for the graphical user interface, Java object serialization for offline state preservation, and a custom recursive-descent JSON parser to maintain a dependency-free codebase.
 
+For a detailed manual on using the application, role guides, simulator controls, and log setup, see the [Features and Usage Guide](docs/features_and_usage_guide.md).
+
 ## 1. System Overview and Specifications
 
 The system is designed to achieve the following performance and correctness metrics:
