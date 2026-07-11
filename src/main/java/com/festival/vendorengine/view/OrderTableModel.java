@@ -27,6 +27,11 @@ public class OrderTableModel extends AbstractTableModel implements OrderObserver
     private final Stall stall;
     private List<Order> orders;
 
+    private List<Order> pendingOrders = new ArrayList<>();
+    private List<Order> acceptedOrders = new ArrayList<>();
+    private List<Order> readyOrders = new ArrayList<>();
+    private List<Order> completedOrders = new ArrayList<>();
+
     /**
      * Constructs a table model bound to the given stall's queue.
      *
@@ -51,6 +56,22 @@ public class OrderTableModel extends AbstractTableModel implements OrderObserver
         return null;
     }
 
+    public List<Order> getPendingOrders() {
+        return pendingOrders;
+    }
+
+    public List<Order> getAcceptedOrders() {
+        return acceptedOrders;
+    }
+
+    public List<Order> getReadyOrders() {
+        return readyOrders;
+    }
+
+    public List<Order> getCompletedOrders() {
+        return completedOrders;
+    }
+
     /**
      * Refreshes the local snapshot of orders from the stall queue,
      * sorting them in correct priority order (highest urgency first).
@@ -59,6 +80,26 @@ public class OrderTableModel extends AbstractTableModel implements OrderObserver
         List<Order> temp = new ArrayList<>(stall.getOrderQueue());
         temp.sort(OrderComparator.DEFAULT);
         this.orders = temp;
+
+        List<Order> newPending = new ArrayList<>();
+        List<Order> newAccepted = new ArrayList<>();
+        List<Order> newReady = new ArrayList<>();
+        List<Order> newCompleted = new ArrayList<>();
+
+        for (Order o : temp) {
+            switch (o.getStatus()) {
+                case PENDING -> newPending.add(o);
+                case ACCEPTED -> newAccepted.add(o);
+                case READY -> newReady.add(o);
+                case SERVED, CANCELLED -> newCompleted.add(o);
+            }
+        }
+
+        this.pendingOrders = newPending;
+        this.acceptedOrders = newAccepted;
+        this.readyOrders = newReady;
+        this.completedOrders = newCompleted;
+
         fireTableDataChanged();
     }
 

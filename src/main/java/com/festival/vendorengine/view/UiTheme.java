@@ -24,14 +24,44 @@ public final class UiTheme {
     public static final Color FG = Color.WHITE;               // Primary text (white)
     public static final Color FG_MUTED = new Color(0xA5A5B5); // Muted secondary text
 
+    // Urgency Status Colors (DESIGN-NOTES.md tokens)
+    public static final Color FRESH = new Color(0x35C97F);    // order just placed / stall healthy / online (green)
+    public static final Color WARM = new Color(0xF6A93B);     // order aging / stall busy (marigold/yellow)
+    public static final Color HOT = new Color(0xFF5C68);      // order overdue / stall backlogged / offline (red)
+
     // Typography
     public static final Font TITLE = new Font("Segoe UI", Font.BOLD, 18);
     public static final Font SUBTITLE = new Font("Segoe UI", Font.BOLD, 14);
     public static final Font BODY = new Font("Segoe UI", Font.PLAIN, 13);
     public static final Font BUTTON = new Font("Segoe UI", Font.BOLD, 13);
+    public static final Font MONOSPACE = new Font("Monospaced", Font.PLAIN, 12);
 
     private UiTheme() {
         // Prevent instantiation
+    }
+
+    /**
+     * Returns the urgency color based on the elapsed time against a maximum duration threshold.
+     * - FRESH: elapsed time is below 50% of maxMs
+     * - WARM: elapsed time is between 50% (inclusive) and 90% (exclusive) of maxMs
+     * - HOT: elapsed time is 90% (inclusive) or above maxMs
+     *
+     * @param elapsedMs the time elapsed in milliseconds
+     * @param maxMs the maximum SLA duration threshold in milliseconds
+     * @return the urgency Color
+     */
+    public static Color urgencyColor(long elapsedMs, long maxMs) {
+        if (maxMs <= 0) {
+            return FRESH;
+        }
+        double ratio = (double) elapsedMs / maxMs;
+        if (ratio < 0.5) {
+            return FRESH;
+        } else if (ratio < 0.9) {
+            return WARM;
+        } else {
+            return HOT;
+        }
     }
 
     /**
