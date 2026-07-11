@@ -195,42 +195,24 @@ vendor-engine/
 
 ## 7. Build, Test, and Run Instructions
 
-### Build Configuration
+Provide below the verbatim build, run, and test script commands for the application:
 
-Run the package phase to compile files and package them into a runnable fat JAR containing all compiled classes:
 ```bash
+# Build
 mvn clean package
-```
 
-### Execution
-
-Start the application (launches `LoginView` and initiates the background `PeakHourSimulator` stream):
-```bash
+# Run (starts LoginView; PeakHourSimulator begins emitting immediately)
 java -jar target/vendor-engine-1.0.jar
+
+# Run tests
+mvn test
+
+# Toggle offline simulation manually during a live demo:
+#   the NetworkMonitorDaemon reads a flag file `network.flag` every heartbeat tick;
+#   `echo down > network.flag` to force offline mode, `echo up > network.flag` to restore.
+#   This gives you a clean, narratable "watch it fail over" moment for the video
+#   instead of relying on flaky real Wi-Fi during recording.
 ```
-
-### Run Tests and Generate Coverage
-
-Run the JUnit 5 test suite and generate JaCoCo code coverage reports:
-```bash
-mvn clean test jacoco:report
-```
-The resulting code coverage report will be saved at:
-`target/site/jacoco/index.html`
-
-### Manual Offline Simulation
-
-To simulate network changes manually during execution without restarting the application:
-1.  **Force Offline State**: Write `down` to the `network.flag` file:
-    ```bash
-    echo down > network.flag
-    ```
-    The `NetworkMonitorDaemon` will capture this change within 1 second, save the serialized state, and show a red "OFFLINE" indicator on the view.
-2.  **Restore Online State**: Write `up` to the `network.flag` file:
-    ```bash
-    echo up > network.flag
-    ```
-    The daemon will load the cached state, write served orders to `sync_payload.json`, and clear the offline indicator.
 
 ---
 
