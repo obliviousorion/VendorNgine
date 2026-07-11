@@ -1,5 +1,6 @@
 package com.festival.vendorengine.model;
 
+import com.festival.vendorengine.controller.OrderComparator;
 import java.io.Serializable;
 import java.util.concurrent.PriorityBlockingQueue;
 
@@ -45,9 +46,13 @@ public class Stall implements Serializable {
     public Stall(String stallId, String stallName) {
         this.stallId = stallId;
         this.stallName = stallName;
-        // Comparator is intentionally left as natural ordering for now.
-        // OrderComparator.DEFAULT will be wired here once controller/ is implemented.
-        this.orderQueue = new PriorityBlockingQueue<>(64);
+        // OrderComparator.DEFAULT is a named, Serializable class — NOT a lambda.
+        // See Section 6.4 of the architecture document and OrderComparator's
+        // class-level Javadoc for the full rationale. In short: PriorityBlockingQueue
+        // serializes its comparator reference, and lambda-generated anonymous class
+        // names are JVM-specific and not stable across restarts, so a named class
+        // is required for safe round-trip serialization of AppState.
+        this.orderQueue = new PriorityBlockingQueue<>(64, OrderComparator.DEFAULT);
         this.revenueTotal = 0.0;
     }
 

@@ -1,5 +1,6 @@
 package com.festival.vendorengine.model;
 
+import com.festival.vendorengine.controller.OrderComparator;
 import java.io.Serializable;
 import java.util.List;
 
@@ -91,8 +92,9 @@ public class Order implements Serializable, Comparable<Order> {
 
     @Override
     public int compareTo(Order other) {
-        throw new UnsupportedOperationException(
-                "compareTo is not yet implemented; OrderComparator (controller/) is required.");
+        // Delegate to the canonical, Serializable comparator so that natural
+        // ordering is consistent with PriorityBlockingQueue's ordering.
+        return OrderComparator.DEFAULT.compare(this, other);
     }
 
     // -------------------------------------------------------------------------
