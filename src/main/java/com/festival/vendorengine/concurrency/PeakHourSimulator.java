@@ -6,52 +6,61 @@ import java.util.UUID;
 /**
  * Generates synthetic JSON order payloads at a configurable rate.
  *
- * <p><strong>Default rate:</strong> 10 orders/second.<br>
- * <strong>Spike mode:</strong> 50 orders/second (activated via {@link #setSpikeMode(boolean)}).<br>
- * <strong>Jitter:</strong> each sleep interval is jittered ±20% so the stream is
- * not perfectly periodic — more realistic and better stresses the
+ * <p><strong>Modes (Section 6.2):</strong>
+ * <ul>
+ *   <li><b>Slow</b>  — 1 order every {@value #SLOW_DELAY_MS} ms (0.25/s)</li>
+ *   <li><b>Normal</b>— 1 order every {@value #NORMAL_DELAY_MS} ms (0.5/s)</li>
+ *   <li><b>Peak</b>  — {@value #PEAK_ORDERS_PER_SEC} orders/second (via
+ *       {@code ordersPerSecond} field with {@code customDelayMs == -1})</li>
+ *   <li><b>Custom</b>— caller sets any positive {@code customDelayMs}</li>
+ * </ul>
+ *
+ * <p><strong>Jitter:</strong> each sleep interval is jittered ±20% so the
+ * stream is not perfectly periodic — more realistic and better stresses the
  * {@code BlockingQueue} under burst conditions.
  *
- * <p>Stall IDs are sampled from {@code STALL_IDS}. Menu items are drawn from a
- * fixed pool. VIP priority is assigned to 10% of orders (matches the deck's
- * assumption from the Part A formulation).
+ * <p>The stall ID pool is supplied at construction time (loaded from
+ * {@code stalls.json} via {@code Main}) so the simulator always matches the
+ * actual registry — no more hard-coded list diverging from the data file.
  *
- * <p>{@link #nextPayload()} sleeps the calling thread for the jittered interval,
- * then returns a JSON {@code String} matching the schema in Section 12 of the
- * architecture document:
- * <pre>
- * {
- *   "orderId"  : "&lt;uuid&gt;",
- *   "stallId"  : "S01",
- *   "priority" : "STANDARD",
- *   "createdAt": 1731234567890,
- *   "items"    : [ { "itemName": "Pani Puri", "quantity": 2, "unitPrice": 60.0 } ]
- * }
- * </pre>
+ * <p>{@link #nextPayloadForStall(String)} lets the {@code SimulatorControlPanel}
+ * inject a single order for a specific stall without going through the
+ * normal rate-limited path.
  *
  * <p>No javax.swing or java.awt imports — hard MVC constraint (Section 10).
  */
 public class PeakHourSimulator {
 
     // -------------------------------------------------------------------------
-    // Rate constants
+    // Rate / mode constants
     // -------------------------------------------------------------------------
 
-    /** Normal operating rate: 10 orders per second → 100 ms base sleep. */
-    public static final int NORMAL_RATE = 10;
+    /** Slow mode: 1 order every 4 seconds. */
+    public static final long SLOW_DELAY_MS = 4_000L;
 
-    /** Spike mode rate: 50 orders per second → 20 ms base sleep. */
+    /** Normal mode: 1 order every 2 seconds. */
+    public static final long NORMAL_DELAY_MS = 2_000L;
+
+    /** Peak mode: 5 orders per second (200 ms base interval). */
+    public static final int PEAK_ORDERS_PER_SEC = 5;
+
+    /**
+     * Legacy spike-rate constant kept for backward compatibility
+     * ({@code setSpikeMode(true)} still works).
+     */
     public static final int SPIKE_RATE = 50;
+
+    /** Normal operating rate used by the no-arg constructor. */
+    public static final int NORMAL_RATE = 10;
 
     /** Jitter factor: sleep interval varies ±20% of the base interval. */
     private static final double JITTER_FRACTION = 0.20;
 
     // -------------------------------------------------------------------------
-    // Fixed data pools
+    // Default stall IDs (used only when no stall pool is supplied)
     // -------------------------------------------------------------------------
 
-    /** Stall IDs that orders can be assigned to. */
-    private static final String[] STALL_IDS = {"S01", "S02", "S03", "S04", "S05"};
+    private static final String[] DEFAULT_STALL_IDS = {"S01", "S02", "S03", "S04", "S05"};
 
     /** Menu items used for synthetic line items. */
     private static final String[] MENU_ITEMS = {
@@ -65,23 +74,33 @@ public class PeakHourSimulator {
     };
 
     // -------------------------------------------------------------------------
-    // State
+    // Instance state
     // -------------------------------------------------------------------------
 
+    /** Live stall ID pool — sourced from stalls.json at startup. */
+    private volatile String[] stallIds;
+
     private volatile int ordersPerSecond;
-    private volatile long customDelayMs = -1;
+    private volatile long customDelayMs = NORMAL_DELAY_MS; // default: Normal mode
     private final Random rng;
 
+    // -------------------------------------------------------------------------
+    // Constructors
+    // -------------------------------------------------------------------------
+
     /**
-     * Constructs a simulator with the normal (10 orders/second) rate.
+     * Constructs a simulator using the default stall pool and Normal rate.
+     * Prefer {@link #PeakHourSimulator(String[])} in production code so the
+     * stall pool matches {@code stalls.json}.
      */
     public PeakHourSimulator() {
+        this.stallIds = DEFAULT_STALL_IDS.clone();
         this.ordersPerSecond = NORMAL_RATE;
         this.rng = new Random();
     }
 
     /**
-     * Constructs a simulator with an explicit initial rate.
+     * Constructs a simulator with an explicit initial rate (legacy API).
      *
      * @param ordersPerSecond orders to emit per second (must be &gt; 0)
      */
@@ -89,27 +108,88 @@ public class PeakHourSimulator {
         if (ordersPerSecond <= 0) {
             throw new IllegalArgumentException("ordersPerSecond must be > 0, got: " + ordersPerSecond);
         }
+        this.stallIds = DEFAULT_STALL_IDS.clone();
         this.ordersPerSecond = ordersPerSecond;
         this.rng = new Random();
     }
 
+    /**
+     * Preferred constructor: supplies the live stall ID pool from
+     * {@code stalls.json} so the simulator never generates orders for
+     * stalls that aren't registered.
+     *
+     * @param stallIds array of stall IDs to distribute orders across;
+     *                 must not be null or empty
+     */
+    public PeakHourSimulator(String[] stallIds) {
+        if (stallIds == null || stallIds.length == 0) {
+            throw new IllegalArgumentException("stallIds must not be null or empty");
+        }
+        this.stallIds = stallIds.clone();
+        this.ordersPerSecond = NORMAL_RATE;
+        this.rng = new Random();
+    }
+
     // -------------------------------------------------------------------------
-    // Rate control
+    // Rate / mode control
     // -------------------------------------------------------------------------
 
     /**
-     * Switches between spike mode (50/sec) and normal mode (10/sec).
-     *
-     * <p>The change is visible to the producer thread immediately (volatile write).
-     *
-     * @param spike {@code true} to activate spike mode, {@code false} for normal
+     * Sets SLOW mode: 1 order every {@value #SLOW_DELAY_MS} ms.
+     * This is the most readable rate for manual UI testing.
      */
-    public void setSpikeMode(boolean spike) {
-        this.ordersPerSecond = spike ? SPIKE_RATE : NORMAL_RATE;
+    public void setSlowMode() {
+        this.customDelayMs = SLOW_DELAY_MS;
     }
 
     /**
-     * Sets an arbitrary custom rate.
+     * Sets NORMAL mode: 1 order every {@value #NORMAL_DELAY_MS} ms.
+     */
+    public void setNormalMode() {
+        this.customDelayMs = NORMAL_DELAY_MS;
+    }
+
+    /**
+     * Sets PEAK mode: {@value #PEAK_ORDERS_PER_SEC} orders/second.
+     * Disables the fixed-delay path and uses the rate-based path instead.
+     */
+    public void setPeakMode() {
+        this.customDelayMs = -1L;                      // switch to rate-based path
+        this.ordersPerSecond = PEAK_ORDERS_PER_SEC;
+    }
+
+    /**
+     * Switches between legacy spike mode (50/sec) and normal mode (10/sec).
+     * Kept for backward compatibility with {@code Main.java}'s CLI args.
+     *
+     * @param spike {@code true} for spike mode, {@code false} for normal
+     */
+    public void setSpikeMode(boolean spike) {
+        if (spike) {
+            this.customDelayMs = -1L;
+            this.ordersPerSecond = SPIKE_RATE;
+        } else {
+            setNormalMode();
+        }
+    }
+
+    /**
+     * Sets a custom fixed inter-arrival delay, overriding the mode setting.
+     * Set to -1 to disable and use the {@code ordersPerSecond} rate instead.
+     *
+     * @param customDelayMs positive value = ms between orders; -1 = use rate
+     */
+    public void setCustomDelayMs(long customDelayMs) {
+        this.customDelayMs = customDelayMs;
+    }
+
+    /** Returns the current custom delay in milliseconds (-1 = not active). */
+    public long getCustomDelayMs() {
+        return customDelayMs;
+    }
+
+    /**
+     * Sets the orders-per-second rate used when {@code customDelayMs == -1}.
      *
      * @param ordersPerSecond must be &gt; 0
      */
@@ -120,22 +200,25 @@ public class PeakHourSimulator {
         this.ordersPerSecond = ordersPerSecond;
     }
 
-    /** Returns the currently configured rate. */
+    /** Returns the currently configured orders-per-second rate. */
     public int getOrdersPerSecond() {
         return ordersPerSecond;
     }
 
     /**
-     * Sets a custom sleep delay in milliseconds, overriding the ordersPerSecond rate.
-     * Set to -1 to disable and use the rate instead.
+     * Replaces the live stall ID pool. Thread-safe via volatile write;
+     * the next call to {@link #nextPayload()} will pick from the new pool.
+     *
+     * @param stallIds new pool; must not be null or empty
      */
-    public void setCustomDelayMs(long customDelayMs) {
-        this.customDelayMs = customDelayMs;
+    public void setStallIds(String[] stallIds) {
+        if (stallIds == null || stallIds.length == 0) return;
+        this.stallIds = stallIds.clone();
     }
 
-    /** Returns the custom delay in milliseconds. */
-    public long getCustomDelayMs() {
-        return customDelayMs;
+    /** Returns a snapshot of the current stall ID pool. */
+    public String[] getStallIds() {
+        return stallIds.clone();
     }
 
     // -------------------------------------------------------------------------
@@ -144,27 +227,36 @@ public class PeakHourSimulator {
 
     /**
      * Sleeps for the jittered inter-arrival interval and then returns one
-     * synthetic JSON order payload.
-     *
-     * <p>Base interval = {@code 1000 / ordersPerSecond} ms. Actual sleep =
-     * base × (1 ± {@value #JITTER_FRACTION}), chosen uniformly at random.
+     * synthetic JSON order payload for a randomly chosen stall.
      *
      * @return a JSON string conforming to the order payload schema (Section 12)
      * @throws InterruptedException if the thread is interrupted while sleeping
      */
     public String nextPayload() throws InterruptedException {
         sleepJittered();
-        return buildJson();
+        return buildJsonForStall(stallIds[rng.nextInt(stallIds.length)]);
     }
 
     /**
-     * Returns one synthetic JSON payload without sleeping.
-     * Useful for tests that need payloads without rate-throttling.
+     * Returns one synthetic JSON payload for a randomly chosen stall
+     * <em>without</em> sleeping. Useful for tests and immediate injection.
      *
      * @return a JSON string conforming to the order payload schema (Section 12)
      */
     public String nextPayloadNoSleep() {
-        return buildJson();
+        return buildJsonForStall(stallIds[rng.nextInt(stallIds.length)]);
+    }
+
+    /**
+     * Returns one synthetic JSON payload for the <em>specified</em> stall,
+     * without sleeping. Used by {@code SimulatorControlPanel} to inject
+     * a targeted order for manual testing.
+     *
+     * @param stallId the stall ID to embed in the payload
+     * @return a JSON string with the given {@code stallId}
+     */
+    public String nextPayloadForStall(String stallId) {
+        return buildJsonForStall(stallId);
     }
 
     // -------------------------------------------------------------------------
@@ -173,33 +265,33 @@ public class PeakHourSimulator {
 
     /**
      * Sleeps for the jittered inter-arrival delay.
-     * Jitter is ±{@value #JITTER_FRACTION} of the base interval.
+     * Uses {@code customDelayMs} when positive; otherwise uses {@code ordersPerSecond}.
      */
     private void sleepJittered() throws InterruptedException {
         long baseMs;
-        if (customDelayMs > 0) {
-            baseMs = customDelayMs;
+        long delay = customDelayMs; // volatile snapshot
+        if (delay > 0) {
+            baseMs = delay;
         } else {
-            // Snapshot rate to avoid TOCTOU on volatile read
-            int rate = ordersPerSecond;
+            int rate = ordersPerSecond; // volatile snapshot
             baseMs = 1000L / rate;
         }
 
-        // Uniform jitter in [-jitter, +jitter] relative to base
-        // rng.nextDouble() in [0,1) → scale to [-0.2, +0.2] of base
+        // Uniform jitter in [-JITTER_FRACTION, +JITTER_FRACTION] of base
         double jitterFactor = 1.0 + (rng.nextDouble() * 2.0 * JITTER_FRACTION) - JITTER_FRACTION;
         long sleepMs = Math.max(1L, Math.round(baseMs * jitterFactor));
-
         Thread.sleep(sleepMs);
     }
 
     /**
-     * Builds a synthetic JSON payload string.
+     * Builds a synthetic JSON payload string for the given stall ID.
      * Uses {@link StringBuilder} and manual escaping — no JSON library needed.
+     *
+     * @param stallId the stall to route the order to
+     * @return a complete JSON order payload string
      */
-    private String buildJson() {
+    private String buildJsonForStall(String stallId) {
         String orderId  = UUID.randomUUID().toString();
-        String stallId  = STALL_IDS[rng.nextInt(STALL_IDS.length)];
         String priority = rng.nextInt(10) == 0 ? "VIP" : "STANDARD"; // 10% VIP
         long createdAt  = System.currentTimeMillis();
 
@@ -209,7 +301,7 @@ public class PeakHourSimulator {
         for (int i = 0; i < itemCount; i++) {
             int idx      = rng.nextInt(MENU_ITEMS.length);
             String name  = MENU_ITEMS[idx];
-            int qty      = 1 + rng.nextInt(4);        // 1..4
+            int qty      = 1 + rng.nextInt(4); // 1..4
             double price = UNIT_PRICES[idx];
             if (i > 0) items.append(',');
             items.append("{\"itemName\":\"").append(name).append("\",")

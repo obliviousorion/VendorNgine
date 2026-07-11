@@ -1,6 +1,9 @@
 {
   "stalls": [
     { "stallId": "S01", "stallName": "Chaat Corner" },
-    { "stallId": "S02", "stallName": "Momo Point" }
+    { "stallId": "S02", "stallName": "Momo Point" },
+    { "stallId": "S03", "stallName": "Dosa Junction" },
+    { "stallId": "S04", "stallName": "Kulfi Cart" },
+    { "stallId": "S05", "stallName": "Chai Adda" }
   ]
 }

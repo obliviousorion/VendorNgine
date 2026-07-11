@@ -22,4 +22,11 @@ public final class AppConfig {
 
     /** File name of the synchronized order history payload. */
     public static final String SYNC_PAYLOAD_PATH = "sync_payload.json";
+
+    /**
+     * Set {@code true} to automatically open the floating Simulator Control
+     * Panel when the application starts. Set {@code false} to suppress it
+     * (e.g., for demos, exams, or production-like runs).
+     */
+    public static final boolean SHOW_SIMULATOR_PANEL = true;
 }

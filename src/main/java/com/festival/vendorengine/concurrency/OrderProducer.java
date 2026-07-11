@@ -1,5 +1,7 @@
 package com.festival.vendorengine.concurrency;
 
+import com.festival.vendorengine.model.AppState;
+
 import java.util.concurrent.BlockingQueue;
 
 /**
@@ -7,20 +9,24 @@ import java.util.concurrent.BlockingQueue;
  * {@link PeakHourSimulator} and pushes them onto a shared
  * {@link BlockingQueue}{@code <String>} for the consumer pool to process.
  *
- * <p><strong>Producer-Consumer pattern (Section 6.2):</strong> one producer is
- * sufficient — the queue is the fan-out point. Increasing to N producers would
- * only make sense if the payload <em>generation</em> itself were CPU-bound, which
- * it isn't (the simulator is I/O / sleep dominated). Eight consumers handle the
- * downstream parallelism instead.
+ * <h2>Pause/Resume</h2>
+ * <p>Two independent pause mechanisms are supported and are ORed together —
+ * both must be "not-paused" for an order to be generated:
+ * <ul>
+ *   <li><b>Manual pause</b> — {@link #setPaused(boolean)}, toggled by the
+ *       {@code SimulatorControlPanel}.</li>
+ *   <li><b>Network pause</b> — when {@code AppState.isOnline()} is
+ *       {@code false} the producer automatically idles. Orders are not
+ *       injected into the queue while the device is offline, matching the
+ *       real-world behaviour where new order packets cannot arrive from a
+ *       disconnected network. When connectivity is restored the producer
+ *       resumes within one idle tick (~50 ms).</li>
+ * </ul>
  *
- * <p>{@code queue.put(payload)} applies natural backpressure: if the queue is full
- * (capacity 1000 per the architecture spec) the producer thread blocks rather than
- * dropping data, giving consumers time to catch up. This is exactly the
- * "zero data loss" guarantee at the ingestion boundary.
- *
- * <p>{@code running} is {@code volatile} so that {@link #stop()} called from any
- * thread is immediately visible to the loop in {@link #run()} without requiring a
- * {@code synchronized} block (a single-writer, single-reader volatile flag).
+ * <h2>Counter</h2>
+ * <p>{@link #getOrdersEnqueued()} returns a running count of payloads
+ * successfully delivered to the queue; the control panel displays this as
+ * a live "Generated" metric.
  *
  * <p>No javax.swing or java.awt imports — hard MVC constraint (Section 10).
  */
@@ -30,56 +36,146 @@ public class OrderProducer implements Runnable {
     private final PeakHourSimulator simulator;
 
     /**
-     * Volatile flag: written by the main/control thread (via {@link #stop()}),
-     * read by the producer thread (loop condition in {@link #run()}).
-     * Volatile ensures the write is immediately visible without a lock.
+     * Optional reference to {@code AppState}. When non-null, the producer
+     * treats {@code !appState.isOnline()} as an implicit pause: no orders
+     * are enqueued while the device reports as offline.
+     *
+     * <p>{@code volatile} ensures the latest value of {@code AppState.online}
+     * (itself {@code volatile}) is always visible to this thread.
+     */
+    private final AppState appState; // may be null (unit-test path)
+
+    /**
+     * Volatile running flag: written by the main/control thread via
+     * {@link #stop()}, read by the producer thread.
      */
     private volatile boolean running = true;
 
     /**
-     * Constructs a producer bound to the given queue and simulator.
-     *
-     * @param queue     the shared ingestion queue (e.g. {@code LinkedBlockingQueue})
-     * @param simulator the payload source controlling emit rate and format
+     * Volatile manual-pause flag: when {@code true} the producer loop idles
+     * (50 ms sleeps) rather than calling {@link PeakHourSimulator#nextPayload()}.
+     * Written by the EDT via {@link #setPaused(boolean)}.
      */
-    public OrderProducer(BlockingQueue<String> queue, PeakHourSimulator simulator) {
-        this.queue = queue;
+    private volatile boolean paused = false;
+
+    /**
+     * Monotonically increasing count of payloads successfully handed to the
+     * queue. Volatile so the EDT can read it safely for display.
+     */
+    private volatile long ordersEnqueued = 0L;
+
+    // -------------------------------------------------------------------------
+    // Constructors
+    // -------------------------------------------------------------------------
+
+    /**
+     * Constructs a producer with network-aware pausing.
+     *
+     * @param queue      the shared ingestion queue
+     * @param simulator  the payload source
+     * @param appState   shared application state — used to suspend production
+     *                   when the device goes offline; pass {@code null} to
+     *                   disable network-aware pausing (testing only)
+     */
+    public OrderProducer(BlockingQueue<String> queue,
+                         PeakHourSimulator simulator,
+                         AppState appState) {
+        this.queue     = queue;
         this.simulator = simulator;
+        this.appState  = appState;
     }
 
     /**
-     * Producer loop: runs until {@link #stop()} is called or the thread is
-     * interrupted (e.g. by {@code ExecutorService.shutdownNow()}).
+     * Convenience constructor for tests that don't need network-aware pausing.
+     * Equivalent to {@code new OrderProducer(queue, simulator, null)}.
      *
-     * <p>On {@link InterruptedException} the interrupt flag is re-set so that
-     * the enclosing executor infrastructure can clean up correctly.
+     * @param queue     the shared ingestion queue
+     * @param simulator the payload source
+     */
+    public OrderProducer(BlockingQueue<String> queue, PeakHourSimulator simulator) {
+        this(queue, simulator, null);
+    }
+
+    // -------------------------------------------------------------------------
+    // Runnable
+    // -------------------------------------------------------------------------
+
+    /**
+     * Producer loop: runs until {@link #stop()} is called or the thread is
+     * interrupted.
+     *
+     * <p>The loop idles (50 ms bursts) when either the manual {@link #paused}
+     * flag is set <em>or</em> the network is reported offline via
+     * {@code AppState.isOnline()}. Both conditions are ORed: either one alone
+     * is enough to suspend production.
      */
     @Override
     public void run() {
         while (running) {
+            // ── Idle check: manual pause OR network offline ───────────────────
+            boolean networkDown = (appState != null) && !appState.isOnline();
+            if (paused || networkDown) {
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    running = false;
+                }
+                continue;
+            }
+
+            // ── Normal produce path ───────────────────────────────────────────
             try {
-                // nextPayload() may sleep internally to honour the configured rate;
-                // it also jitters the sleep interval ±20% for realism.
                 String payload = simulator.nextPayload();
-
-                // put() blocks if the queue is at capacity — built-in backpressure,
-                // no data is ever dropped at the producer boundary.
                 queue.put(payload);
-
+                ordersEnqueued++;
             } catch (InterruptedException e) {
-                // Re-set the interrupt flag so the executor can honour it.
                 Thread.currentThread().interrupt();
                 running = false;
             }
         }
     }
 
-    /**
-     * Signals the producer to stop after the current {@code nextPayload()} /
-     * {@code put()} call returns. Does not block; the thread terminates on its
-     * own schedule once it sees the flag.
-     */
+    // -------------------------------------------------------------------------
+    // Control API (called from the EDT via SimulatorControlPanel)
+    // -------------------------------------------------------------------------
+
+    /** Signals the producer to stop permanently. Does not block. */
     public void stop() {
         running = false;
+    }
+
+    /**
+     * Sets or clears the manual pause flag. Independent of the network state:
+     * setting {@code paused = false} does NOT resume production if the network
+     * is also down.
+     *
+     * @param paused {@code true} to pause; {@code false} to resume
+     */
+    public void setPaused(boolean paused) {
+        this.paused = paused;
+    }
+
+    /** Returns {@code true} if the manual pause flag is set. */
+    public boolean isPaused() {
+        return paused;
+    }
+
+    /**
+     * Returns {@code true} if the producer is effectively idle for any reason
+     * (manual pause OR network offline). Used by the control panel to show
+     * an accurate status.
+     */
+    public boolean isEffectivelyIdle() {
+        boolean networkDown = (appState != null) && !appState.isOnline();
+        return paused || networkDown;
+    }
+
+    /**
+     * Returns the total number of payloads successfully put into the queue
+     * since this producer was started.
+     */
+    public long getOrdersEnqueued() {
+        return ordersEnqueued;
     }
 }

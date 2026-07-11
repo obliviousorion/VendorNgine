@@ -20,7 +20,7 @@ import javax.swing.Box;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
-import javax.swing.JOptionPane;
+
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.ScrollPaneConstants;
@@ -103,10 +103,7 @@ public class KitchenView extends JFrame implements OrderObserver {
         JButton btnLogout = new JButton("Logout");
         UiTheme.styleButton(btnLogout);
         btnLogout.addActionListener(e -> {
-            int confirm = JOptionPane.showConfirmDialog(this,
-                    "Are you sure you want to log out?",
-                    "Confirm Logout", JOptionPane.YES_NO_OPTION);
-            if (confirm == JOptionPane.YES_OPTION) {
+            if (ConfirmLogoutDialog.confirm(this)) {
                 cleanup();
                 dispose();
                 new LoginView(controller, dataSource, appState).setVisible(true);

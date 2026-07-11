@@ -219,6 +219,7 @@ public class LoginView extends JFrame {
                     BorderFactory.createEmptyBorder(12, 12, 12, 12)
             ));
 
+            populateStalls(); // refresh: picks up any stalls added by the simulator since startup
             stallPanelContainer.setVisible(true);
         } else if (role == UserRole.MERCHANT_ADMIN) {
             tileKitchen.setBackground(UiTheme.PANEL);

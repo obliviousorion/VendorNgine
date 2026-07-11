@@ -13,6 +13,7 @@ import com.festival.vendorengine.io.SyncClient;
 import com.festival.vendorengine.model.AppState;
 import com.festival.vendorengine.model.Stall;
 import com.festival.vendorengine.view.LoginView;
+import com.festival.vendorengine.view.SimulatorControlPanel;
 import com.festival.vendorengine.view.UiTheme;
 
 import java.util.concurrent.BlockingQueue;
@@ -21,31 +22,86 @@ import java.util.concurrent.LinkedBlockingQueue;
 import javax.swing.SwingUtilities;
 
 /**
- * Main application entry point (Section 6 & 9.5).
+ * Main application entry point (Section 6 &amp; 9.5).
+ *
+ * <p>Key wiring changes:
+ * <ul>
+ *   <li>The stall ID pool is extracted from the loaded {@code stallMap} and
+ *       passed to {@link PeakHourSimulator} — simulator and data file stay
+ *       in sync automatically.</li>
+ *   <li>If {@link AppConfig#SHOW_SIMULATOR_PANEL} is {@code true}, a floating
+ *       {@link SimulatorControlPanel} is opened on the EDT alongside the
+ *       {@link LoginView}.</li>
+ * </ul>
  */
 public class Main {
 
     public static void main(String[] args) {
-        // 1. Call UiTheme.apply() as the very first line, before any Swing frame is constructed (Section 9.5)
+        // Redirect System.out and System.err to both console and log/app.log
+        try {
+            java.nio.file.Files.createDirectories(java.nio.file.Path.of("log"));
+            final java.io.PrintStream consoleOut = System.out;
+            final java.io.PrintStream consoleErr = System.err;
+            final java.io.FileOutputStream logFile = new java.io.FileOutputStream("log/app.log", true);
+            
+            System.setOut(new java.io.PrintStream(new java.io.OutputStream() {
+                @Override
+                public void write(int b) throws java.io.IOException {
+                    consoleOut.write(b);
+                    logFile.write(b);
+                }
+                @Override
+                public void write(byte[] b, int off, int len) throws java.io.IOException {
+                    consoleOut.write(b, off, len);
+                    logFile.write(b, off, len);
+                }
+                @Override
+                public void flush() throws java.io.IOException {
+                    consoleOut.flush();
+                    logFile.flush();
+                }
+                @Override
+                public void close() throws java.io.IOException {
+                    consoleOut.close();
+                    logFile.close();
+                }
+            }, true, "UTF-8"));
+            
+            System.setErr(new java.io.PrintStream(new java.io.OutputStream() {
+                @Override
+                public void write(int b) throws java.io.IOException {
+                    consoleErr.write(b);
+                    logFile.write(b);
+                }
+                @Override
+                public void write(byte[] b, int off, int len) throws java.io.IOException {
+                    consoleErr.write(b, off, len);
+                    logFile.write(b, off, len);
+                }
+                @Override
+                public void flush() throws java.io.IOException {
+                    consoleErr.flush();
+                    logFile.flush();
+                }
+                @Override
+                public void close() throws java.io.IOException {
+                    consoleErr.close();
+                    logFile.close();
+                }
+            }, true, "UTF-8"));
+        } catch (Exception e) {
+            System.err.println("Warning: Could not redirect logs to log/app.log: " + e.getMessage());
+        }
+
+        // 1. Apply UiTheme as the very first line before any Swing frame is built (Section 9.5)
         UiTheme.apply();
 
         System.out.println("[Main] Initializing Vendor Engine...");
 
-        // Parse simulation delay from command-line (defaults to 4000ms for visual verification)
-        long delayMs = 4000; 
-        if (args.length > 0) {
-            try {
-                if (args[0].equalsIgnoreCase("normal")) {
-                    delayMs = -1; // 10 orders/second
-                } else if (args[0].equalsIgnoreCase("spike")) {
-                    delayMs = -2; // 50 orders/second
-                } else {
-                    delayMs = Long.parseLong(args[0]);
-                }
-            } catch (NumberFormatException e) {
-                System.err.println("[Main] Invalid delay argument, using default 4000ms.");
-            }
-        }
+        // Parse simulation mode from command-line args (optional; SimulatorControlPanel
+        // lets you change rate at runtime without restarting).
+        // Accepted values: "slow" | "normal" | "peak" | <ms>
+        String initMode = args.length > 0 ? args[0].toLowerCase() : "normal";
 
         // 2. Load stall definitions
         ConcurrentHashMap<String, Stall> stallMap;
@@ -53,12 +109,13 @@ public class Main {
             stallMap = MockDataLoader.loadStalls(AppConfig.STALLS_JSON_PATH);
             System.out.println("[Main] Loaded " + stallMap.size() + " stall(s) from " + AppConfig.STALLS_JSON_PATH);
         } catch (Exception e) {
-            System.err.println("[Main] Could not load stalls from file. Using default in-memory stalls. Error: " + e.getMessage());
+            System.err.println("[Main] Could not load stalls from file. Using built-in defaults. Error: " + e.getMessage());
             stallMap = new ConcurrentHashMap<>();
             stallMap.put("S01", new Stall("S01", "Chaat Corner"));
             stallMap.put("S02", new Stall("S02", "Momo Point"));
-            stallMap.put("S03", new Stall("S03", "South Indian Delights"));
-            stallMap.put("S04", new Stall("S04", "Dessert Parlour"));
+            stallMap.put("S03", new Stall("S03", "Dosa Junction"));
+            stallMap.put("S04", new Stall("S04", "Kulfi Cart"));
+            stallMap.put("S05", new Stall("S05", "Chai Adda"));
         }
 
         // 3. Initialize Controller, DataSource, and AppState
@@ -69,37 +126,44 @@ public class Main {
         // 4. Set up the Ingestion Queue (Capacity 1000 per Section 6.3)
         BlockingQueue<String> queue = new LinkedBlockingQueue<>(1000);
 
-        // 5. Initialize the Concurrency Layer (Section 6)
-        PeakHourSimulator simulator = new PeakHourSimulator();
-        if (delayMs == -2) {
-            simulator.setSpikeMode(true);
-            System.out.println("[Main] Simulation running at spike rate (50 orders/sec).");
-        } else if (delayMs == -1) {
-            System.out.println("[Main] Simulation running at default rate (10 orders/sec).");
-        } else if (delayMs > 0) {
-            simulator.setCustomDelayMs(delayMs);
-            System.out.println("[Main] Simulation throttled to 1 order every " + delayMs + " ms.");
-        }
-        OrderProducer producer = new OrderProducer(queue, simulator);
+        // 5. Build the simulator with the live stall ID pool so it always
+        //    matches stalls.json — no more hard-coded array divergence.
+        String[] stallIds = stallMap.keySet().toArray(new String[0]);
+        PeakHourSimulator simulator = new PeakHourSimulator(stallIds);
 
-        // Submit 8 consumer tasks and 1 producer task to the ExecutorServiceManager thread pool (Section 6.3)
+        // Apply the initial mode (overridable at runtime via SimulatorControlPanel)
+        switch (initMode) {
+            case "slow"  -> { simulator.setSlowMode();   System.out.println("[Main] Starting in SLOW mode (4 s/order)."); }
+            case "peak"  -> { simulator.setPeakMode();   System.out.println("[Main] Starting in PEAK mode (5/sec)."); }
+            case "spike" -> { simulator.setSpikeMode(true); System.out.println("[Main] Starting in SPIKE mode (50/sec)."); }
+            default      -> { simulator.setNormalMode(); System.out.println("[Main] Starting in NORMAL mode (2 s/order)."); }
+        }
+        // Allow a raw ms value as the first arg
+        try {
+            long ms = Long.parseLong(initMode);
+            simulator.setCustomDelayMs(ms);
+            System.out.println("[Main] Starting with custom delay " + ms + " ms/order.");
+        } catch (NumberFormatException ignored) { /* named mode was already applied */ }
+
+        // 6. Start the producer + 8 consumers
+        OrderProducer producer = new OrderProducer(queue, simulator, appState);
         ExecutorServiceManager threadManager = ExecutorServiceManager.getInstance();
         threadManager.submit(producer);
-        System.out.println("[Main] Started order producer task in the thread pool.");
+        System.out.println("[Main] Started order producer.");
 
         for (int i = 0; i < 8; i++) {
             threadManager.submit(new OrderConsumer(queue, controller));
         }
-        System.out.println("[Main] Started 8 order consumers in the thread pool.");
+        System.out.println("[Main] Started 8 order consumers.");
 
-        // 6. Initialize IO Failover Components and start Network Monitor Daemon (Section 8)
+        // 7. IO Failover / Network Monitor Daemon (Section 8)
         OfflineSerializer serializer = new OfflineSerializer(AppConfig.OFFLINE_SER_PATH);
         SyncClient syncClient = new SyncClient(AppConfig.SYNC_PAYLOAD_PATH);
         NetworkMonitorDaemon networkMonitor = new NetworkMonitorDaemon(appState, serializer, syncClient);
-        networkMonitor.startDaemonThread(); // Starts outside pool as a daemon thread (Section 8.3)
-        System.out.println("[Main] Started autonomous network monitor daemon thread.");
+        networkMonitor.startDaemonThread();
+        System.out.println("[Main] Network monitor daemon started.");
 
-        // 7. Register JVM Shutdown Hook for clean thread pools termination (Section 6.1)
+        // 8. JVM Shutdown Hook (Section 6.1)
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("[Shutdown Hook] Terminating threads gracefully...");
             producer.stop();
@@ -107,11 +171,21 @@ public class Main {
             System.out.println("[Shutdown Hook] Shutdown complete.");
         }, "pool-shutdown-hook"));
 
-        // 8. Launch the Swing GUI on the Event Dispatch Thread (EDT) (Section 9.5)
+        // 9. Launch GUI on the EDT (Section 9.5)
+        final StallDataSource ds = dataSource; // effectively-final capture for lambda
         SwingUtilities.invokeLater(() -> {
-            LoginView loginView = new LoginView(controller, dataSource, appState);
+            // Login screen
+            LoginView loginView = new LoginView(controller, ds, appState);
             loginView.setVisible(true);
-            System.out.println("[Main] LoginView GUI launched on Event Dispatch Thread (EDT).");
+            System.out.println("[Main] LoginView launched on EDT.");
+
+            // Simulator Control Panel (opt-in via AppConfig)
+            if (AppConfig.SHOW_SIMULATOR_PANEL) {
+                SimulatorControlPanel simPanel =
+                        new SimulatorControlPanel(simulator, producer, queue, ds, appState);
+                simPanel.setVisible(true);
+                System.out.println("[Main] SimulatorControlPanel launched on EDT.");
+            }
         });
     }
 }

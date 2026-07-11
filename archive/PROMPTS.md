@@ -22,7 +22,7 @@ Before writing any code, read these files in this repo and confirm you understan
 - DESIGN-NOTES.md (why the redesign looks the way it does)
 - vendor-engine-ui-refresh.html (open it in a browser if you can — it's the visual/
   interaction reference for the new LoginView, KitchenView, and AdminView)
-- UI_IMPLEMENTATION-CHECKLIST.md (the phased task list we'll work through, one phase per
+- IMPLEMENTATION-CHECKLIST.md (the phased task list we'll work through, one phase per
   message from here on)
 
 Do not write or edit any code yet. Reply with:

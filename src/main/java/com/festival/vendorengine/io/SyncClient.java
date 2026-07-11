@@ -74,6 +74,15 @@ public class SyncClient {
      * @param orders the orders to include in the sync payload; may be empty
      */
     public void pushBatch(List<Order> orders) {
+        try {
+            java.io.File file = new java.io.File(filePath);
+            java.io.File parent = file.getParentFile();
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs();
+            }
+        } catch (SecurityException e) {
+            // Ignore security exception, let FileWriter handle it
+        }
         try (BufferedWriter bw = new BufferedWriter(
                 new FileWriter(filePath, StandardCharsets.UTF_8))) {
 

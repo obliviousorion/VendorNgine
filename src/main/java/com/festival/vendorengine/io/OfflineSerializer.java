@@ -85,6 +85,15 @@ public class OfflineSerializer {
      * @throws OfflineSerializationException if writing fails for any reason
      */
     public void save(AppState state) throws OfflineSerializationException {
+        try {
+            java.io.File file = new java.io.File(filePath);
+            java.io.File parent = file.getParentFile();
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs();
+            }
+        } catch (SecurityException e) {
+            // Ignore security exception, let FileOutputStream handle it
+        }
         try (ObjectOutputStream oos =
                      new ObjectOutputStream(new FileOutputStream(filePath))) {
             oos.writeObject(state);

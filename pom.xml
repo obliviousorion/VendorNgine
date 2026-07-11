@@ -45,6 +45,9 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
+                <configuration>
+                    <argLine>-XX:ErrorFile=log/hs_err_pid%p.log -XX:ReplayDataFile=log/replay_pid%p.log</argLine>
+                </configuration>
             </plugin>
             <!-- JaCoCo plugin for code coverage -->
             <plugin>
