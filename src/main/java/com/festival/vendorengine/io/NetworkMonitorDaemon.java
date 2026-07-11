@@ -137,9 +137,15 @@ public class NetworkMonitorDaemon implements Runnable {
      * @return {@code true} if the flag file says the network is up
      */
     boolean pingHeartbeat() {
-        try (BufferedReader reader = new BufferedReader(new FileReader(FLAG_FILE))) {
-            String line = reader.readLine();
-            return line != null && line.trim().equalsIgnoreCase("up");
+        try {
+            java.nio.file.Path path = java.nio.file.Paths.get(FLAG_FILE);
+            if (!java.nio.file.Files.exists(path)) {
+                return false;
+            }
+            String content = java.nio.file.Files.readString(path);
+            // Strip null bytes and BOM which are common in UTF-16 LE output from PowerShell
+            content = content.replace("\0", "").replace("\uFEFF", "").trim();
+            return content.equalsIgnoreCase("up");
         } catch (IOException e) {
             // Missing or unreadable flag file → treat as offline.
             return false;
