@@ -26,8 +26,10 @@ import java.util.Date;
 import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
+import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -86,11 +88,34 @@ public class AdminView extends JFrame implements OrderObserver {
         root.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
         setContentPane(root);
 
-        // Header Title
+        // Header Panel (Navigation Bar)
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setBackground(UiTheme.PANEL);
+        headerPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(UiTheme.PANEL, 1),
+                BorderFactory.createEmptyBorder(10, 15, 10, 15)
+        ));
+
         JLabel lblTitle = new JLabel("Merchant Operations Center", SwingConstants.LEFT);
         lblTitle.setFont(UiTheme.TITLE);
         lblTitle.setForeground(UiTheme.FG);
-        root.add(lblTitle, BorderLayout.NORTH);
+        headerPanel.add(lblTitle, BorderLayout.WEST);
+
+        JButton btnLogout = new JButton("Logout");
+        UiTheme.styleButton(btnLogout);
+        btnLogout.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this,
+                    "Are you sure you want to log out?",
+                    "Confirm Logout", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                cleanup();
+                dispose();
+                new LoginView(controller, dataSource, appState).setVisible(true);
+            }
+        });
+        headerPanel.add(btnLogout, BorderLayout.EAST);
+
+        root.add(headerPanel, BorderLayout.NORTH);
 
         // Left Panel: Stall List (JList)
         JPanel leftPanel = new JPanel(new BorderLayout(10, 10));

@@ -67,7 +67,11 @@ public class KitchenView extends JFrame implements OrderObserver {
         root.add(bannerPanel, BorderLayout.NORTH);
 
         // 2. Center Stall Panel
-        stallPanel = new StallPanel(stall, controller);
+        stallPanel = new StallPanel(stall, controller, () -> {
+            cleanup();
+            dispose();
+            new LoginView(controller, dataSource, appState).setVisible(true);
+        });
         root.add(stallPanel, BorderLayout.CENTER);
 
         // 3. Register as controller observer for updates

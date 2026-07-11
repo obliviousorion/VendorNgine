@@ -51,7 +51,7 @@ public class StallPanel extends JPanel {
     /**
      * Constructs a panel for the given stall.
      */
-    public StallPanel(Stall stall, OrderController controller) {
+    public StallPanel(Stall stall, OrderController controller, Runnable logoutCallback) {
         this.stall = stall;
         this.controller = controller;
         this.tableModel = new OrderTableModel(stall);
@@ -70,12 +70,29 @@ public class StallPanel extends JPanel {
         lblStallName.setFont(UiTheme.TITLE);
         lblStallName.setForeground(UiTheme.FG);
 
+        // East header panel for Stall ID and Logout button
+        JPanel eastHeader = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
+        eastHeader.setBackground(UiTheme.PANEL);
+
         JLabel lblStallId = new JLabel("Stall ID: " + stall.getStallId());
         lblStallId.setFont(UiTheme.BODY);
         lblStallId.setForeground(UiTheme.FG_MUTED);
+        eastHeader.add(lblStallId);
+
+        JButton btnLogout = new JButton("Logout");
+        UiTheme.styleButton(btnLogout);
+        btnLogout.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this,
+                    "Are you sure you want to log out?",
+                    "Confirm Logout", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                logoutCallback.run();
+            }
+        });
+        eastHeader.add(btnLogout);
 
         headerPanel.add(lblStallName, BorderLayout.WEST);
-        headerPanel.add(lblStallId, BorderLayout.EAST);
+        headerPanel.add(eastHeader, BorderLayout.EAST);
         add(headerPanel, BorderLayout.NORTH);
 
         // 2. Center (Order Table)
