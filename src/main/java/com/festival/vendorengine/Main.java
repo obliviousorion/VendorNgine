@@ -31,6 +31,22 @@ public class Main {
 
         System.out.println("[Main] Initializing Vendor Engine...");
 
+        // Parse simulation delay from command-line (defaults to 4000ms for visual verification)
+        long delayMs = 4000; 
+        if (args.length > 0) {
+            try {
+                if (args[0].equalsIgnoreCase("normal")) {
+                    delayMs = -1; // 10 orders/second
+                } else if (args[0].equalsIgnoreCase("spike")) {
+                    delayMs = -2; // 50 orders/second
+                } else {
+                    delayMs = Long.parseLong(args[0]);
+                }
+            } catch (NumberFormatException e) {
+                System.err.println("[Main] Invalid delay argument, using default 4000ms.");
+            }
+        }
+
         // 2. Load stall definitions
         ConcurrentHashMap<String, Stall> stallMap;
         try {
@@ -55,6 +71,15 @@ public class Main {
 
         // 5. Initialize the Concurrency Layer (Section 6)
         PeakHourSimulator simulator = new PeakHourSimulator();
+        if (delayMs == -2) {
+            simulator.setSpikeMode(true);
+            System.out.println("[Main] Simulation running at spike rate (50 orders/sec).");
+        } else if (delayMs == -1) {
+            System.out.println("[Main] Simulation running at default rate (10 orders/sec).");
+        } else if (delayMs > 0) {
+            simulator.setCustomDelayMs(delayMs);
+            System.out.println("[Main] Simulation throttled to 1 order every " + delayMs + " ms.");
+        }
         OrderProducer producer = new OrderProducer(queue, simulator);
 
         // Submit 8 consumer tasks to the ExecutorServiceManager fixed thread pool (Section 6.3)

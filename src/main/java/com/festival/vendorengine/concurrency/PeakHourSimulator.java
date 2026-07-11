@@ -69,6 +69,7 @@ public class PeakHourSimulator {
     // -------------------------------------------------------------------------
 
     private volatile int ordersPerSecond;
+    private volatile long customDelayMs = -1;
     private final Random rng;
 
     /**
@@ -124,6 +125,19 @@ public class PeakHourSimulator {
         return ordersPerSecond;
     }
 
+    /**
+     * Sets a custom sleep delay in milliseconds, overriding the ordersPerSecond rate.
+     * Set to -1 to disable and use the rate instead.
+     */
+    public void setCustomDelayMs(long customDelayMs) {
+        this.customDelayMs = customDelayMs;
+    }
+
+    /** Returns the custom delay in milliseconds. */
+    public long getCustomDelayMs() {
+        return customDelayMs;
+    }
+
     // -------------------------------------------------------------------------
     // Payload generation
     // -------------------------------------------------------------------------
@@ -162,9 +176,14 @@ public class PeakHourSimulator {
      * Jitter is ±{@value #JITTER_FRACTION} of the base interval.
      */
     private void sleepJittered() throws InterruptedException {
-        // Snapshot rate to avoid TOCTOU on volatile read
-        int rate = ordersPerSecond;
-        long baseMs = 1000L / rate;
+        long baseMs;
+        if (customDelayMs > 0) {
+            baseMs = customDelayMs;
+        } else {
+            // Snapshot rate to avoid TOCTOU on volatile read
+            int rate = ordersPerSecond;
+            baseMs = 1000L / rate;
+        }
 
         // Uniform jitter in [-jitter, +jitter] relative to base
         // rng.nextDouble() in [0,1) → scale to [-0.2, +0.2] of base
