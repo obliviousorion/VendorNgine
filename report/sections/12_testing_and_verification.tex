@@ -1,0 +1,85 @@
+% Section 12: Testing & Verification
+
+\section{Testing \& Verification}
+\label{sec:testing_and_verification}
+
+To verify correctness, thread safety, and resilience under load, a comprehensive automated testing suite was developed using JUnit 5. The test suite stresses concurrent execution paths and validates data recovery under simulated network drops.
+
+\subsection{JUnit 5 Test Suite Description}
+The test suite consists of 11 test classes covering the following business behaviors:
+\begin{itemize}
+    \item \code{OrderTest}: Verifies that order age (\code{getElapsedMs()}) increases monotonically and that line item subtotal calculations are correct.
+    \item \code{OrderComparatorTest}: Asserts that VIP orders are ranked higher than standard orders, that older orders are prioritized on tie-breaks, and that the comparator meets mathematical anti-symmetry properties.
+    \item \code{AppStateSerializationTest}: Verifies deep equality of stalls, queues, and order parameters after serialization/deserialization cycles.
+    \item \code{OrderProducerConsumerTest}: Stresses the Producer-Consumer pipeline. It pushes 500 JSON order payloads through a bounded queue to 8 consumers, using a \code{CountDownLatch(500)} to verify that all orders are successfully routed with zero duplicates and zero data loss.
+    \item \code{OrderControllerTest}: Validates legal status transitions (e.g. \code{PENDING $\rightarrow$ ACCEPTED}), credits stall revenues on served status, and verifies that invalid transitions throw exceptions.
+    \item \code{StallDataSourceTest}: Verifies unmodifiable data collections, sorted stall listings, and global revenue aggregates.
+    \item \code{JsonUtilTest}: Tests successful JSON parsing, malformed formats, missing fields, string escape sequences, and negative or decimal numbers.
+    \item \code{OfflineSerializerTest}: Verifies round-trip functionality, empty map states, and ensures that corrupted streams throw the checked \code{OfflineSerializationException}.
+    \item \code{SyncClientTest}: Validates JSON builder outputs, string formatting, and handles file-write exception scenarios.
+    \item \code{NetworkMonitorDaemonTest}: Exercises offline state serialization, filters served orders for sync, and verifies thread loop interruptions.
+    \item \code{HeartbeatEncodingTest}: Verifies character decoding and Byte Order Mark (BOM) detection of the heartbeat flag file.
+\end{itemize}
+
+\subsection{Verification of Automated Test Run}
+Executing the Maven test phase compiles the project, runs the test suite, and outputs the following results:
+\begin{lstlisting}[language=bash]
+mvn clean test
+...
+[INFO] Running com.festival.vendorengine.concurrency.OrderProducerConsumerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.festival.vendorengine.controller.OrderComparatorTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.festival.vendorengine.controller.OrderControllerTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.festival.vendorengine.controller.StallDataSourceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.festival.vendorengine.io.HeartbeatEncodingTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.festival.vendorengine.io.JsonUtilTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.festival.vendorengine.io.NetworkMonitorDaemonTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.festival.vendorengine.io.OfflineSerializerTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.festival.vendorengine.io.SyncClientTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.festival.vendorengine.model.AppStateSerializationTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.festival.vendorengine.model.OrderTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0
+...
+[INFO] Results:
+[INFO] Tests run: 69, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+\end{lstlisting}
+The test run completes successfully, confirming that all 69 unit tests pass.
+
+\subsection{Code Coverage Analysis}
+Code coverage was measured using the \code{jacoco-maven-plugin}. Table~\ref{tab:coverage_results} outlines the measured coverage metrics.
+
+\begin{table}[H]
+    \centering
+    \caption{Measured Code Coverage by Package}
+    \begin{tabularx}{\linewidth}{Xcccl}
+        \toprule
+        \textbf{Package / Namespace} & \textbf{Instruction Coverage} & \textbf{Branch Coverage} & \textbf{Line Coverage} & \textbf{Status} \\
+        \midrule
+        \code{com.festival.vendorengine.model} & 100\% & N/A & 100\% & Target Met ($\ge$ 80\%) \\
+        \code{com.festival.vendorengine.controller} & 97.21\% & 96.43\% & 97.30\% & Target Met ($\ge$ 80\%) \\
+        \code{com.festival.vendorengine.io} & 98.13\% & 85.16\% & 96.92\% & Target Met ($\ge$ 80\%) \\
+        \bottomrule
+    \end{tabularx}
+    \label{tab:coverage_results}
+\end{table}
+
+*(Note: The \code{com.festival.vendorengine.view} package containing Swing graphical layouts is deliberately excluded from automated unit testing and coverage calculations. Visual layout verification is performed through manual testing).*
+
+\subsection{Concurrency Testing Strategy}
+A common challenge in multithreaded test suites is ``flaky'' test results caused by arbitrary thread sleep assertions. To prevent this, the Vendor Engine's concurrency tests avoid calling \code{Thread.sleep()} for validation. 
+Instead, tests utilize \code{CountDownLatch} and \code{awaitTermination()} to coordinate threads. For example, in \code{OrderProducerConsumerTest.java}, a countdown latch is initialized with a value of 500. 
+Each consumer decrements the latch upon successfully routing an order, and the main test thread blocks on \code{latch.await(5, TimeUnit.SECONDS)}. This ensures tests execute quickly and reliably.
+
+% Source: report/VERIFIED_FACTS.md:106-126
+% Source: README.md:221-247
+% Source: Vendor_Engine_Architecture.md:690-702

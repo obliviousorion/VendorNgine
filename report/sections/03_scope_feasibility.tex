@@ -1,0 +1,44 @@
+% Section 03: Scope & Feasibility
+
+\section{Scope \& Feasibility}
+\label{sec:scope_feasibility}
+
+A critical aspect of software engineering is ensuring the project's scope is aligned with available timelines and resources. For the CS F213 OOP project, the implementation was constrained to a 3-week development cycle during the summer term. The scope and feasibility analysis below justifies the architectural choices and timeline partitioning.
+
+\subsection{Project Scope Definition}
+The system was scoped specifically to create a standalone desktop application rather than a full-scale web service, making it highly feasible for a single student developer while maintaining production-level complexity:
+\begin{itemize}
+    \item \textbf{In-Scope Features}:
+    \begin{itemize}
+        \item A local order management daemon that simulates real-time client traffic.
+        \item Multithreaded order consumption and local priority queue routing.
+        \item Graphical user interfaces for kitchen staff and merchant administrators.
+        \item local file-based offline serialization and batch synchronization.
+        \item A JUnit 5 unit testing suite achieving $\ge$80\% code coverage on core business logic.
+    \end{itemize}
+    \item \textbf{Out-of-Scope Features}:
+    \begin{itemize}
+        \item A production-grade network layer (replaced by file-based heartbeat simulation).
+        \item A physical SQL database integration (the application uses in-memory data structures, designed to be ``JDBC-ready'' for future DAO expansion).
+        \item Automated graphical user interface unit testing.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Feasibility Analysis}
+The project's feasibility is supported by three primary architectural decisions:
+\begin{enumerate}
+    \item \textbf{Zero-Dependency Core}: By avoiding heavy external frameworks (such as Spring Boot or JavaFX) and third-party utility libraries (such as Jackson or Apache Commons), compilation is fast, and runtime errors are minimized. The custom-written \code{JsonUtil} recursive-descent parser keeps the project dependency-free (requiring only JUnit 5 for tests).
+    \item \textbf{Compact Class Hierarchy}: The entire codebase consists of 36 Java files (including views and tests), aligning with the feasibility target of approximately 20--25 core production classes.
+    \item \textbf{Standardized Build Toolchain}: Using Maven for build orchestration and compilation ensures that the application compiles into a single executable fat JAR, making deployment simple and platform-independent.
+\end{enumerate}
+
+\subsection{3-Week Implementation Timeline}
+The project was structured across a three-week schedule, separating milestones to prevent integration blockages:
+\begin{description}
+    \item[Week 1: Core Foundation] Development of the data models (\code{Order}, \code{Stall}, \code{AppState}), the concurrent Producer-Consumer pipeline, and the central controller routing logic. Core unit tests for comparisons and queues were written.
+    \item[Week 2: GUI \& Observer Wiring] Design of the user interfaces (\code{LoginView}, \code{KitchenView}, \code{AdminView}) using Swing. Wiring the views as observers of the controller and utilizing \code{SwingUtilities.}\allowbreak\code{invokeLater()} to ensure thread-safety on the Event Dispatch Thread (EDT).
+    \item[Week 3: Resilience, Testing \& Polish] Development of the \code{NetworkMonitor}\allowbreak\code{Daemon}, serialization backup (\code{offline\_}\allowbreak\code{stalls.ser}), and synchronization client (\code{sync\_}\allowbreak\code{payload.json}). Finalizing the JUnit 5 test suite to exceed coverage targets and recording the operational demonstration video.
+\end{description}
+
+% Source: Vendor_Engine_Architecture.md:115-116, 146-150, 727-747
+% Source: Vendor_Engine_Project_Context.md:7-14, 21-22

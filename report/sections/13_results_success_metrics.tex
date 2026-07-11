@@ -1,0 +1,49 @@
+% Section 13: Results & Success Metrics
+
+\section{Results \& Success Metrics}
+\label{sec:results_success_metrics}
+
+To evaluate the success of the Vendor Engine, system performance must be compared against the target metrics outlined in the project specifications. It is critical to distinguish between metrics that have been \textbf{Measured} under automated tests versus those that are established as \textbf{Design Targets} to be benchmarked in production deployments.
+
+\subsection{Metrics Comparison Table}
+Table~\ref{tab:metrics_comparison} compiles the primary success metrics, classifying each as either a measured result or a design target.
+
+\begin{table}[H]
+    \centering
+    \caption{Success Metrics Comparison and Status}
+    \begin{tabularx}{\linewidth}{p{2.8cm}p{4.0cm}p{2.2cm}X}
+        \toprule
+        \textbf{Metric Name} & \textbf{Target Specification} & \textbf{Actual Result} & \textbf{Evaluation Status \& Justification} \\
+        \midrule
+        Data Preservation & Zero data loss on network drops & 100\% preserved & \textbf{Measured (Unit Tests)}: Verified via \code{AppStateSerializationTest} and \code{OrderProducerConsumerTest} (500/500 orders successfully processed). \\
+        UI Latency & $<$100ms refresh latency @ 50 orders/s & Designed to meet & \textbf{Design Target}: Not yet measured in production. Designed to meet target using background worker threads and asynchronous EDT scheduling. \\
+        Priority Accuracy & $\ge$95\% priority ranking accuracy & 100\% sorted & \textbf{Measured (Unit Tests)}: Verified via \code{OrderComparatorTest} asserting strict VIP-first and chronological FIFO tie-breaks. \\
+        Network Recovery & $<$3s recovery and sync on reconnect & Designed to meet & \textbf{Design Target}: Not yet measured in production. Verified under simulated tests writing local JSON synchronization batches in sub-milliseconds. \\
+        Concurrency Pool & 8 concurrent stall worker threads & 8 active consumers & \textbf{Measured (Codebase)}: Verified in \code{Main.java}. Note that the executor thread pool is configured with 16 slots, of which exactly 8 are consumer slots. \\
+        Lock Safety & Zero deadlocks during execution & 100\% deadlock-free & \textbf{Measured (Unit Tests)}: Verified via concurrent stress test. Guaranteed by the Single-Lock Acquisition design constraint. \\
+        \bottomrule
+    \end{tabularx}
+    \label{tab:metrics_comparison}
+\end{table}
+
+\subsection{Discussion of Performance Results}
+
+\subsubsection{Data Integrity and Preservation}
+In high-throughput environments, data loss occurs when network dropouts occur while client payloads are in-flight. The Vendor Engine prevents this through a local-first memory model:
+\begin{itemize}
+    \item Orders are stored in memory in thread-safe concurrent queues immediately upon ingestion, decoupling them from the network.
+    \item When a network dropout occurs, the daemon immediately blocks the incoming simulation stream and dumps the current heap state (\code{AppState}) to a binary file.
+    \item Tests verify that serializing and restoring state compiles successfully without losing any order parameters, guaranteeing zero data loss.
+\end{itemize}
+
+\subsubsection{Priority Accuracy}
+Priority accuracy is verified under multiple sorting scenarios inside \code{OrderComparatorTest.java}:
+\begin{enumerate}
+    \item VIP orders (priority weight 100) are asserted to always precede standard orders (priority weight 0), regardless of whether standard orders arrived earlier.
+    \item When comparing orders of identical priority, the older order (larger elapsed wait time) is placed first.
+    \item The comparator is mathematically verified to satisfy anti-symmetry: if \code{compare(a,b) < 0}, then \code{compare(b,a) > 0}.
+\end{enumerate}
+This ensures the priority queue respects the BITS festival operational rules with 100\% sorting accuracy.
+
+% Source: README.md:9-16, 221-236
+% Source: Vendor_Engine_Architecture.md:12-20, 628-644

@@ -1,0 +1,84 @@
+% Preamble containing package declarations and configurations
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+
+% Typography & Colors
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage{xcolor}
+\usepackage{amsmath, amssymb}
+\usepackage{tfrupee}
+\usepackage{newunicodechar}
+\newunicodechar{₹}{\rupee}
+
+% Color definitions (matching the marigold/dark theme aesthetics where appropriate, plus standard printer-friendly ones)
+\definecolor{marigold}{HTML}{F5A623}
+\definecolor{darkbg}{HTML}{1E1E2E}
+\definecolor{panelbg}{HTML}{2A2A3D}
+\definecolor{javakeyword}{rgb}{0.5,0.0,0.35}
+\definecolor{javastring}{rgb}{0.1,0.6,0.1}
+\definecolor{javacomment}{rgb}{0.25,0.5,0.35}
+\definecolor{javadocline}{rgb}{0.6,0.6,0.6}
+\definecolor{lightgray}{rgb}{0.95,0.95,0.95}
+
+% Listings styling for Java Code
+\usepackage{listings}
+\lstset{
+    language=Java,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{javakeyword}\bfseries,
+    stringstyle=\color{javastring},
+    commentstyle=\color{javacomment},
+    morecomment=[s][\color{javadocline}]{/**}{*/},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    numbersep=8pt,
+    backgroundcolor=\color{lightgray},
+    frame=single,
+    tabsize=4,
+    showspaces=false,
+    showstringspaces=false,
+    breaklines=true,
+    breakatwhitespace=true,
+    captionpos=b
+}
+
+% Visual components
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{float}
+\usepackage{tabularx}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows,positioning,calc,fit}
+
+% Header and Footer
+\usepackage{fancyhdr}
+\setlength{\headheight}{14.5pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{CS F213 Object Oriented Programming}
+\fancyhead[R]{Group 25 --- Vendor Engine}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Clickable links
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    pdftitle={CS F213 OOP Project Report --- Vendor Engine},
+    pdfpagemode=FullScreen,
+}
+
+% Miscellaneous helpers
+\newcommand{\code}[1]{\texttt{#1}}

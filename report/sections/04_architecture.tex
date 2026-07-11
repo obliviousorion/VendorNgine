@@ -1,0 +1,65 @@
+% Section 04: System Architecture
+
+\section{System Architecture}
+\label{sec:system_architecture}
+
+The Vendor Engine is designed around a strictly decoupled, five-tier layered architecture that separates data structures, concurrency handling, business mutation logic, storage operations, and the user interface. This structural separation enforces a clean Model-View-Controller (MVC) relationship, ensuring that the model layer has zero knowledge of visual layouts or network states.
+
+\subsection{Architectural Layers}
+The system consists of five distinct layers:
+\begin{enumerate}
+    \item \textbf{Simulation Layer}: Responsible for loading stall configuration files and generating synthetic peak-hour JSON streams.
+    \item \textbf{Concurrency Layer}: Implements the high-throughput Producer-Consumer pipeline using thread pools and thread-safe queues.
+    \item \textbf{Controller Layer}: Implements business logic, handles order status transitions, and maintains the registry of active observers.
+    \item \textbf{Model Layer}: Holds immutable-ish domain data structures with zero external dependencies.
+    \item \textbf{I/O and Storage Layer}: Executes offline binary serialization, polls network flags, and generates synchronization payloads.
+\end{enumerate}
+
+\subsection{Layered Diagram (TikZ)}
+Figure~\ref{fig:architecture} visualizes the five layers, their component layout, and the data flow directions between them.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        layer/.style={rectangle, draw, fill=blue!10, text width=12cm, minimum height=1cm, align=center, rounded corners, font=\bfseries},
+        sublayer/.style={rectangle, draw, fill=gray!10, align=center, rounded corners, font=\small, minimum height=1.6cm},
+        arrow/.style={-latex, thick, draw=black!80},
+        lbl/.style={font=\tiny, fill=white, inner sep=2pt}
+    ]
+        % Nodes
+        \node[layer] (sim) {1. Simulation Layer \\ \normalfont PeakHourSimulator, MockDataLoader};
+        \node[layer, below=1.2cm of sim] (concur) {2. Concurrency Layer \\ \normalfont OrderProducer $\rightarrow$ BlockingQueue$<$String$>$ $\rightarrow$ OrderConsumer[8]};
+        \node[layer, below=1.2cm of concur] (controller) {3. Controller Layer \\ \normalfont OrderController, StallDataSource, OrderComparator, OrderObserver (Interface)};
+        
+        \node[sublayer, text width=4.0cm, below=1.8cm of controller] (io) {4b. I/O \& Storage Layer \\ \normalfont OfflineSerializer, \\ SyncClient, \\ NetworkMonitorDaemon};
+        \node[sublayer, text width=3.2cm, left=0.6cm of io] (view) {4a. View Layer \\ \normalfont KitchenView, \\ AdminView, \\ LoginView};
+        \node[sublayer, text width=3.2cm, right=0.6cm of io] (model) {4c. Model Layer \\ \normalfont Order, Stall, \\ AppState, \\ OrderStatus, UserRole};
+
+        % Connectors
+        \draw[arrow] (sim) -- node[lbl] {Produces JSON Order Strings} (concur);
+        \draw[arrow] (concur) -- node[lbl] {Parses and Routes Order Objects} (controller);
+        
+        \draw[arrow] ($(controller.south) - (3.5cm, 0)$) -- node[lbl, left] {Notifies Observers} (view.north);
+        \draw[arrow] (controller.south) -- node[lbl, right] {Persists on Fault / Syncs} (io.north);
+        \draw[arrow] ($(controller.south) + (3.5cm, 0)$) -- node[lbl, right] {Mutates State} (model.north);
+        
+        \draw[arrow] (io.east) -- node[lbl, above] {Serializes Snapshot} (model.west);
+        \draw[arrow] (view.south) -- ++(0,-0.6cm) -| node[lbl, pos=0.25] {Reads (Facade)} (model.south);
+
+    \end{tikzpicture}
+    \caption{Layered Architecture and Data Flow Diagram}
+    \label{fig:architecture}
+\end{figure}
+
+\subsection{Architectural Data Flow}
+During runtime, order events flow through the system in a structured sequence:
+\begin{enumerate}
+    \item \textbf{Ingestion}: The \code{PeakHourSimulator} generates an order payload as a flat JSON string and hands it to the \code{OrderProducer}. The producer pushes this string into a bounded \code{LinkedBlockingQueue} (capacity 1000). If the queue is full, backpressure is applied to the producer.
+    \item \textbf{Distribution}: Eight concurrent \code{OrderConsumer} threads pull JSON strings from the queue, parse them into \code{Order} objects using \code{JsonUtil}, and submit them to the \code{OrderController}.
+    \item \textbf{Routing}: The \code{OrderController} looks up the target \code{Stall} in its registry map. It enqueues the order into that stall's specific \code{PriorityBlockingQueue}, which sorts it using the \code{OrderComparator}.
+    \item \textbf{Notification}: The controller dispatches state updates on the Event Dispatch Thread (EDT) using \code{SwingUtilities.invokeLater()} to notify all registered observers (such as the GUI views).
+    \item \textbf{Failover}: If the \code{NetworkMonitorDaemon} detects a network drop, it grabs a deep snapshot of the \code{AppState} (stalls, queues, and metadata) and writes it as a binary serialized stream to \code{offline\_stalls.ser} via the \code{OfflineSerializer}.
+\end{enumerate}
+
+% Source: README.md:32-65
+% Source: Vendor_Engine_Architecture.md:26-57

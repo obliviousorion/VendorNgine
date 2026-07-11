@@ -1,8 +1,4 @@
 # Vendor Engine — Project Context Summary
-### CS F213 OOP · Track 4 · Everything discussed in this chat, in one place
-
-This doc exists so you (or anyone picking this up later) don't need to re-read the whole conversation
-to know what was decided, why, and what's still outstanding.
 
 ---
 

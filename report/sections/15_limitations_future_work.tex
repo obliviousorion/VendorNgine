@@ -1,0 +1,28 @@
+% Section 15: Limitations & Future Work
+
+\section{Limitations \& Future Work}
+\label{sec:limitations}
+
+While the Vendor Engine provides a highly concurrent, resilient dashboard for vendor operations, it has several limitations that should be addressed before deploying to a production environment.
+
+\subsection{Current Limitations}
+\begin{enumerate}
+    \item \textbf{Simulated Networking}: The application uses local file polling (\code{network.flag}) to simulate WebSocket network drops. A production deployment requires implementing real TCP socket connections or polling HTTP endpoints.
+    \item \textbf{Monolithic Binary Serialization}: The offline failover system serializes the entire \code{AppState} object graph to a single binary file (\code{offline\_stalls.ser}) on every disconnect. As order history grows over multiple days, this graph will expand, increasing serialization latency and memory usage.
+    \item \textbf{Lack of Database Persistence}: In its current state, the system stores active data in volatile memory maps. If a machine crashes during online mode before an offline state can be serialized, data may be lost.
+    \item \textbf{Limited JSON Parsing Schema}: The custom recursive-descent parser (\code{JsonUtil}) is designed to be lightweight and dependency-free, but it is not optimized for complex nested arrays or generic JSON schema changes.
+\end{enumerate}
+
+\subsection{Future Work \& Architecture Enhancements}
+To transition the system to a production environment, the following engineering enhancements are proposed:
+\begin{itemize}
+    \item \textbf{Transition to TCP/REST Client}: Replace the file-based heartbeat monitor with a real HTTP client polling the Django monolith's \code{/api/heartbeat/} endpoint, and replace the \code{SyncClient} file writer with a real network client sending HTTP \code{POST} payloads.
+    \item \textbf{JDBC Database Persistence}: Replace in-memory maps with local SQLite database connections using JDBC. 
+    The current \code{StallDataSource} class is already designed as a DAO facade, making it easy to swap memory queries with SQLite SQL statements and prepared statements without changing the views.
+    \item \textbf{Incremental Journaling}: Replace the binary serialization of \code{AppState} with an append-only transaction journal (using a structured write-ahead log). 
+    Each new order or status transition would be appended directly to a text log, reducing disk operations and preventing large graph serialization latency.
+    \item \textbf{Production JSON Libraries}: Swap the custom recursive-descent parser for established JSON libraries like Jackson or Google Gson to handle complex JSON variations.
+\end{itemize}
+
+% Source: Vendor_Engine_Architecture.md:146-150, 485-488, 624-625
+% Source: Vendor_Engine_Project_Context.md:31-34, 50-59

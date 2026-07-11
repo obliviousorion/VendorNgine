@@ -1,0 +1,82 @@
+% Section 06: Design Patterns
+
+\section{Design Patterns}
+\label{sec:design_patterns}
+
+To structure a complex, multi-threaded GUI application, recognized design patterns were utilized. These patterns ensure low coupling, high cohesion, and scalable expansion.
+
+\subsection{Design Patterns Mapping Table}
+Table~\ref{tab:design_patterns} lists the implemented design patterns, their exact locations within the package structure, and their structural purpose.
+
+\begin{table}[H]
+    \centering
+    \caption{Design Pattern Implementation Mapping}
+    \begin{tabularx}{\linewidth}{p{2.5cm}p{3.8cm}p{2.8cm}X}
+        \toprule
+        \textbf{Design Pattern} & \textbf{Target Files / Classes} & \textbf{Role in System} & \textbf{Structural Evidence \& Rationale} \\
+        \midrule
+        Model-View-Controller & Packages: \code{model/}, \code{view/}, \code{controller/} & System partitioning & Decouples data, transitions, and visualization. Model package has zero Swing/AWT imports. \\
+        Observer & \code{OrderObserver}, \code{OrderController} & State change distribution & Decouples controller changes from table/view updates. Views register at startup and repaint on notify. \\
+        Producer-Consumer & \code{OrderProducer}, \code{OrderConsumer}, \code{BlockingQueue} & Ingestion rate decoupling & Prevents high simulated transaction rates from locking up database/file writing. Bounded queue handles overflow. \\
+        Singleton & \code{ExecutorServiceManager} & Resource pool control & Prevents thread-count explosions. Eager initialization ensures thread-safe, lock-free global access. \\
+        Strategy & \code{OrderComparator} & Priority ranking algorithm & Decouples order prioritizing logic from the queue. Different comparator strategies can be swapped at construction. \\
+        Facade / DAO & \code{StallDataSource} & Read-only data encapsulation & Exposes a read-only summary facade of stalls to the views, protecting mutating controller methods. \\
+        \bottomrule
+    \end{tabularx}
+    \label{tab:design_patterns}
+\end{table}
+
+\subsection{Implementation Verification \& Details}
+
+\subsubsection{Model-View-Controller (MVC)}
+The MVC layout is strictly enforced in the directory structure. To verify that no visual styling or Swing classes have leaked into the business/data logic, a grep command for Swing classes inside the model package yields zero matches:
+\begin{lstlisting}[language=bash]
+grep -r "javax.swing" src/main/java/com/festival/vendorengine/model/
+# Returns empty result (no UI leaks into domain model)
+\end{lstlisting}
+The model package holds pure data invariants, the controller coordinates mutations, and the view layer visualizes data.
+
+\subsubsection{Observer Pattern}
+The \code{OrderController} maintains a thread-safe registry of active observers using a \code{CopyOnWriteArrayList}:
+\begin{lstlisting}[language=Java]
+private final CopyOnWriteArrayList<OrderObserver> observers = new CopyOnWriteArrayList<>();
+\end{lstlisting}
+Using a copy-on-write structure is ideal here because observers (views) register once at application startup, while order events occur frequently. Iteration during notification is safe and avoids throwaway locking overhead. When an order status is transitioned, the controller notifies observers:
+\begin{lstlisting}[language=Java]
+private void notifyObservers(Order order, Stall stall) {
+    SwingUtilities.invokeLater(() -> {
+        for (OrderObserver obs : observers) {
+            obs.onOrderUpdated(order);
+            obs.onStallSnapshotChanged(stall);
+        }
+    });
+}
+\end{lstlisting}
+
+\subsubsection{Producer-Consumer Pattern}
+The simulation generates orders rapidly. To handle peak loads without locking up the user interface or dropping data, a \code{LinkedBlockingQueue<String>} acts as the thread-safe buffer:
+\begin{itemize}
+    \item \code{OrderProducer} pulls synthetic JSON payloads from the simulator and calls \code{queue.put(rawJSON)}. This block is thread-safe and applies backpressure if the queue reaches its 1000-order capacity.
+    \item Eight parallel \code{OrderConsumer} threads call \code{queue.take()} (which blocks if the queue is empty) to parse the JSON and hand it to the controller.
+\end{itemize}
+
+\subsubsection{Singleton Pattern}
+The application-wide thread pool is managed by the singleton \code{ExecutorServiceManager}. To ensure thread safety without double-checked locking overhead, eager initialization is used:
+\begin{lstlisting}[language=Java]
+public final class ExecutorServiceManager {
+    private static final ExecutorServiceManager INSTANCE = new ExecutorServiceManager();
+    private final ExecutorService pool = Executors.newFixedThreadPool(16);
+    private ExecutorServiceManager() {}
+    public static ExecutorServiceManager getInstance() { return INSTANCE; }
+}
+\end{lstlisting}
+The JVM class loader guarantees that the static variable is initialized before any thread accesses the class (JLS §12.4), rendering manual locking unnecessary.
+
+\subsubsection{Strategy Pattern}
+The queue sorting is delegated to the \code{OrderComparator} strategy. Swapping priorities (for instance, to FIFO or weight-only) is easily accomplished at stall creation without modifying the \code{Stall} class itself:
+\begin{lstlisting}[language=Java]
+this.orderQueue = new PriorityBlockingQueue<>(64, OrderComparator.DEFAULT);
+\end{lstlisting}
+
+% Source: README.md:171-182
+% Source: Vendor_Engine_Architecture.md:287-306, 365-389, 410-444, 615-626

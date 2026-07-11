@@ -1,0 +1,73 @@
+% Section 08: Advanced Java Features
+
+\section{Advanced Java Features}
+\label{sec:advanced_java_features}
+
+Beyond standard syntax, the Vendor Engine employs several advanced Java APIs and concepts to build a production-quality local component. The grading rubric requires the implementation of at least two advanced features; the Vendor Engine incorporates nine distinct features.
+
+\subsection{Advanced Java Features Mapping Table}
+Table~\ref{tab:advanced_features} provides a mapping of each advanced feature utilized, the corresponding file, and its purpose in the system.
+
+\begin{table}[H]
+    \centering
+    \caption{Advanced Java Features Mapping}
+    \begin{tabularx}{\linewidth}{p{3.2cm}p{4.2cm}X}
+        \toprule
+        \textbf{Advanced Feature} & \textbf{Target Files / Classes} & \textbf{Purpose and System Benefit} \\
+        \midrule
+        Concurrency Utilities & \code{ExecutorServiceManager}, \code{Stall}, \code{OrderController} & High-performance thread pooling and thread-safe data structures (\code{ConcurrentHashMap}, \code{CopyOnWriteArrayList}, \code{LinkedBlockingQueue}). \\
+        Object Serialization & \code{AppState}, \code{OfflineSerializer} & Deep binary snapshotting of composite objects to preserve state during network failures. \\
+        Daemon Threads & \code{NetworkMonitorDaemon} & Autonomous, starvation-free heartbeat loop executing outside the worker thread pool. \\
+        Structured Exception Trees & \code{exception/} package & Separates recoverable infrastructure errors (checked) from bad-input programming faults (unchecked). \\
+        Static nested and non-static Inner Classes & \code{Order.LineItem}, \code{StallPanel.OrderRowRenderer} & Static nesting for serialization efficiency; non-static inner class for closure-like scope access in GUI views. \\
+        Swing EDT Discipline & \code{OrderController}, \code{Main} & Enforces single-threaded GUI constraints using asynchronous callbacks via \code{SwingUtilities.invokeLater()}. \\
+        Custom Graphics Redrawing & \code{DocketRingComponent}, \code{AdminView} & Directly overrides \code{paintComponent} to render custom shapes (elapsed arcs) and charts without third-party graphics engines. \\
+        BOM Charset Handling & \code{NetworkMonitorDaemon} & Detects and handles Byte Order Marks (UTF-8, UTF-16LE, UTF-16BE) to support cross-platform heartbeat readings. \\
+        Reflective Constructors & Unit Tests & Instantiates package-private classes inside the test suite to allow isolated testing of components. \\
+        \bottomrule
+    \end{tabularx}
+    \label{tab:advanced_features}
+\end{table}
+
+\subsection{Key Implementation Details}
+
+\subsubsection{Serialization of Custom Objects}
+Binary state backup requires serializing nested composites: \code{AppState} contains a \code{ConcurrentHashMap} of \code{Stall} instances, which contain \code{PriorityBlockingQueue} structures holding \code{Order} objects. 
+To ensure this succeeds, every class in the chain implements \code{Serializable} and defines a stable \code{serialVersionUID}. Furthermore, the comparator passed to the \code{PriorityBlockingQueue} is implemented as a named class (\code{OrderComparator}) rather than a lambda to prevent deserialization errors across separate JVM runs.
+
+\subsubsection{Static vs. Non-Static Inner Classes}
+The codebase demonstrates two forms of nested classes, each matching a specific design choice:
+\begin{enumerate}
+    \item \code{Order.LineItem} is declared as a \textbf{static nested class}:
+    \begin{lstlisting}[language=Java]
+public static class LineItem implements Serializable { ... }
+    \end{lstlisting}
+    Because a line item does not need to reference its parent order's fields, declaring it static prevents it from holding an implicit reference to the outer \code{Order} instance. This keeps memory allocation small and prevents serializing redundant object graphs.
+    \item \code{OrderRowRenderer} (inside \code{StallPanel.java}) is declared as a \textbf{non-static inner class}:
+    \begin{lstlisting}[language=Java]
+private class OrderRowRenderer extends DefaultTableCellRenderer { ... }
+    \end{lstlisting}
+    Being non-static, it has implicit access to the lexical scope of the enclosing \code{StallPanel} instance. It can directly reference the panel's active orders to dynamically compute row colors based on elapsed time without passing references.
+\end{enumerate}
+
+\subsubsection{Byte Order Mark (BOM) Charset Handling}
+When reading the heartbeat flag file (\code{network.flag}), the system may encounter different character encodings depending on whether the file was edited in Linux, Windows Notepad, or Powershell. Windows text editors frequently write a Byte Order Mark (BOM) at the beginning of UTF-8 or UTF-16 files. The \code{NetworkMonitorDaemon} manually detects and strips these BOMs:
+\begin{lstlisting}[language=Java]
+if (bytes.length >= 2) {
+    if (bytes[0] == (byte) 0xFF && bytes[1] == (byte) 0xFE) {
+        charset = Charset.forName("UTF-16LE");
+        offset = 2;
+    } else if (bytes[0] == (byte) 0xFE && bytes[1] == (byte) 0xFF) {
+        charset = Charset.forName("UTF-16BE");
+        offset = 2;
+    } else if (bytes.length >= 3 && bytes[0] == (byte) 0xEF && bytes[1] == (byte) 0xBB && bytes[2] == (byte) 0xBF) {
+        charset = StandardCharsets.UTF_8;
+        offset = 3;
+    }
+}
+\end{lstlisting}
+This prevents character corruption when checking the string ``up''.
+
+% Source: README.md:184-196
+% Source: Vendor_Engine_Architecture.md:198-220, 582-613
+% Source: src/main/java/com/festival/vendorengine/io/NetworkMonitorDaemon.java:150-168

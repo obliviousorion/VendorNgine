@@ -1,0 +1,95 @@
+% Section 10: GUI / View Layer Design
+
+\section{GUI / View Layer Design}
+\label{sec:gui_design}
+
+To replace default light-gray Swing layouts, the Vendor Engine implements a custom, responsive dark theme (\code{UiTheme}) with visual components specifically designed for low-light, high-urgency festival kitchens.
+
+\subsection{Multi-Role Navigation Flow}
+The application starts at the login screen and directs users to their designated operational views:
+\[
+\text{LoginView} \xrightarrow{\text{Role Selection}} 
+\begin{cases} 
+\text{KITCHEN\_WORKER} & \rightarrow \text{KitchenView (Per-Stall Queue Board)} \\
+\text{MERCHANT\_ADMIN} & \rightarrow \text{AdminView (Global Dashboard)} 
+\end{cases}
+\]
+Each view is constructed using the shared singleton controller instance, preventing duplicate state.
+
+\subsection{Signature Custom Visual Components}
+Three custom Swing components were built from scratch to improve the kitchen staff's glanceable awareness:
+
+\subsubsection{Docket Ring Component (\code{DocketRingComponent})}
+To avoid requiring workers to read individual numbers to gauge order wait times, a custom circular radial timer was implemented. It overrides the \code{paintComponent} method of a \code{JComponent} to draw a 2D arc indicating elapsed time:
+\begin{lstlisting}[language=Java]
+@Override
+protected void paintComponent(Graphics g) {
+    super.paintComponent(g);
+    Graphics2D g2 = (Graphics2D) g.create();
+    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    // Draw background track
+    g2.setColor(UiTheme.BG_LIGHT);
+    g2.draw(new Arc2D.Double(x, y, w, h, 0, 360, Arc2D.OPEN));
+    // Draw elapsed arc (color shifts green -> amber -> red)
+    g2.setColor(getUrgencyColor(elapsedMs));
+    g2.draw(new Arc2D.Double(x, y, w, h, 90, -arcAngle, Arc2D.OPEN));
+}
+\end{lstlisting}
+The ring's color shifts dynamically from green (fresh) to amber (warm) to red (hot) based on the order's age relative to a target preparation limit.
+
+\subsubsection{Ticket Card Border (\code{TicketCardBorder})}
+To deliver a realistic paper docket aesthetic, a custom border was built by extending \code{AbstractBorder}. It paints dashed line dividers and custom circular ticket-punch notches on the sides of order cards using alpha compositing and clipping:
+\begin{lstlisting}[language=Java]
+@Override
+public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
+    Graphics2D g2 = (Graphics2D) g.create();
+    // Paint left and right punch notches
+    g2.setColor(UiTheme.BG);
+    g2.fill(new Ellipse2D.Double(x - R, notchY, 2*R, 2*R));
+    g2.fill(new Ellipse2D.Double(x + width - R, notchY, 2*R, 2*R));
+    // Paint dashed separator line
+    g2.setStroke(new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_BEVEL, 0, new float[]{4}, 0));
+    g2.draw(new Line2D.Double(x + R, separatorY, x + width - R, separatorY));
+}
+\end{lstlisting}
+
+\subsubsection{Themed Dialog (\code{ConfirmLogoutDialog})}
+To maintain visual consistency, default operating system popups (e.g. \code{JOptionPane}) are bypassed. The logout confirmation is drawn using an undecorated \code{JDialog} styled with custom button layout options in the matching dark palette.
+
+\subsection{View Implementations}
+
+\subsubsection{Kitchen Dashboard (\code{KitchenView})}
+The kitchen view organizes incoming orders into a three-column Kanban board layout (PENDING, ACCEPTED, READY TO SERVE). 
+Each order card contains a single primary contextual action button (e.g. ``Accept Order'' under PENDING, ``Mark Ready'' under ACCEPTED, and ``Serve Order'' under READY) placed directly beside the order items. 
+Served and cancelled tickets are automatically moved to a collapsible ``Recently Completed'' strip at the bottom to reduce visual noise.
+
+\subsubsection{Merchant Operations Center (\code{AdminView})}
+The admin command panel shows aggregate metrics across all active stalls:
+\begin{itemize}
+    \item \textbf{Status Indicator Sidebar}: A list of active stalls displaying a status dot that shifts color (green, amber, or red) based on their active queue depths, alerting administrators to backlogged stalls.
+    \item \textbf{Custom Graphics2D Revenue Chart}: A real-time revenue trend chart redrawing dynamically as orders are served. It features gridlines, Rupee (\text{₹}) labels, and a pulsing pulse-dot drawn on the latest plot point using alpha compositing.
+    \item \textbf{Stall Revenue Ranking Panel}: A horizontal bar chart visualizer displaying descending sales performance per stall.
+\end{itemize}
+
+\subsection{Event Dispatch Thread (EDT) Discipline}
+Java Swing is single-threaded; all components must be modified exclusively on the Event Dispatch Thread (EDT). The Vendor Engine enforces this rule via a single entry point:
+\begin{itemize}
+    \item In \code{Main.java}, the GUI is initialized on the EDT:
+    \begin{lstlisting}[language=Java]
+SwingUtilities.invokeLater(() -> new LoginView(controller, ds, appState).setVisible(true));
+    \end{lstlisting}
+    \item Background worker threads (producer, consumer pool, network daemon) never access view components. Instead, when they trigger model updates via the \code{OrderController}, the controller automatically wraps observer notifications inside the EDT funnel:
+    \begin{lstlisting}[language=Java]
+SwingUtilities.invokeLater(() -> {
+    for (OrderObserver obs : observers) {
+        obs.onOrderUpdated(order);
+    }
+});
+    \end{lstlisting}
+    This centralizes thread redirection, preventing UI lockups, thread race conditions, or component repaint flickers.
+\end{itemize}
+
+% Source: docs/features_and_usage_guide.md:20-100
+% Source: archive/DESIGN-NOTES.md:1-24, 57-130
+% Source: src/main/java/com/festival/vendorengine/view/KitchenView.java:96-112, 170-192, 404-428
+% Source: src/main/java/com/festival/vendorengine/controller/OrderController.java:435-442

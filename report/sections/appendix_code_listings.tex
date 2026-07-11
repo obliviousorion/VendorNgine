@@ -1,0 +1,102 @@
+% Appendix B: Selected Code Listings
+
+\section{Appendix B: Selected Code Listings}
+\label{sec:appendix_code_listings}
+
+This appendix contains key code listings from the Vendor Engine codebase. These listings demonstrate clean formatting, documentation comments, and the application of advanced Java concepts.
+
+\subsection{Prioritization Strategy: OrderComparator.java}
+This named class implements both \code{Comparator<Order>} and \code{Serializable} to ensure stable, round-trip serialization of the \code{PriorityBlockingQueue} within the \code{AppState}.
+
+\begin{lstlisting}[language=Java, caption=Prioritization Comparator Class]
+package com.festival.vendorengine.controller;
+
+import com.festival.vendorengine.model.Order;
+import java.io.Serializable;
+import java.util.Comparator;
+
+/**
+ * Comparator for Order objects used inside Stall.orderQueue.
+ * Implements Serializable to survive deep ObjectOutputStream writes.
+ */
+public class OrderComparator implements Comparator<Order>, Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** Shared singleton comparator instance. */
+    public static final OrderComparator DEFAULT = new OrderComparator();
+
+    private OrderComparator() {
+        // Private constructor for singleton enforcement
+    }
+
+    /**
+     * Compares two orders. Higher priority (VIP) beats Standard.
+     * On identical priority tiers, older orders (larger elapsed wait times) win.
+     */
+    @Override
+    public int compare(Order a, Order b) {
+        // VIP (100) always beats Standard (0)
+        int byPriority = Integer.compare(b.getPriority(), a.getPriority());
+        if (byPriority != 0) {
+            return byPriority;
+        }
+
+        // Tie-break: older orders win (larger elapsedMs)
+        return Long.compare(b.getElapsedMs(), a.getElapsedMs());
+    }
+}
+\end{lstlisting}
+
+\subsection{Thread Pool Manager: ExecutorServiceManager.java}
+The eagerly-initialized singleton thread pool manager controls the 16-thread fixed pool shared application-wide.
+
+\begin{lstlisting}[language=Java, caption=Thread Pool Manager Singleton]
+package com.festival.vendorengine.concurrency;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Application-wide thread pool manager - eagerly-initialized Singleton.
+ * Thread-safe by JVM class loader specifications.
+ */
+public final class ExecutorServiceManager {
+
+    // Eagerly created at class-load time - thread-safe by JLS section 12.4
+    private static final ExecutorServiceManager INSTANCE = new ExecutorServiceManager();
+
+    private final ExecutorService pool = Executors.newFixedThreadPool(16);
+
+    private ExecutorServiceManager() {
+        // Prevent accidental instantiation
+    }
+
+    /** Returns the sole thread pool manager instance. */
+    public static ExecutorServiceManager getInstance() {
+        return INSTANCE;
+    }
+
+    /** Submits a task to the shared pool. */
+    public void submit(Runnable task) {
+        pool.submit(task);
+    }
+
+    /** Gracefully shuts down the thread pool with a 5-second timeout window. */
+    public void shutdown() {
+        pool.shutdown();
+        try {
+            if (!pool.awaitTermination(5, TimeUnit.SECONDS)) {
+                pool.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            pool.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+}
+\end{lstlisting}
+
+% Source: src/main/java/com/festival/vendorengine/controller/OrderComparator.java
+% Source: src/main/java/com/festival/vendorengine/concurrency/ExecutorServiceManager.java

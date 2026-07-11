@@ -1,0 +1,69 @@
+% Section 09: Offline Resilience & Network Failover
+
+\section{Offline Resilience \& Network Failover}
+\label{sec:offline_resilience}
+
+In a busy festival environment, local network drops are frequent. To ensure uninterrupted service, the Vendor Engine implements a fully autonomous, file-based network monitoring and recovery system.
+
+\subsection{Network State Detection}
+Connectivity is managed by the \code{NetworkMonitorDaemon} running as an independent background thread. It polls the status of the network every 1,000ms by reading the \code{network.flag} file. If the file contains \code{"up"}, the system operates in \textbf{Online Mode}. If the file contains \code{"down"} (or is missing or corrupted), the system transitions to \textbf{Offline Mode}.
+
+\subsection{Failover and Recovery Flow (TikZ)}
+Figure~\ref{fig:failover_flow} illustrates the step-by-step state-transition flow when connectivity is dropped and subsequently restored.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        state/.style={rectangle, draw, fill=blue!10, text width=4.5cm, minimum height=1.2cm, align=center, rounded corners, font=\small},
+        action/.style={rectangle, draw, fill=gray!10, text width=4cm, minimum height=1cm, align=center, rounded corners, font=\scriptsize},
+        arrow/.style={-latex, thick, draw=black!80}
+    ]
+        % Nodes
+        \node[state] (online) {\textbf{Online Mode} \\ \normalfont Active WebSocket Stream \\ \code{AppState.online = true}};
+        \node[action, below=1cm of online] (lost) {\textbf{Network Lost Event} \\ \normalfont Read ``down'' from \code{network.flag}};
+        \node[state, below=1cm of lost] (offline) {\textbf{Offline Mode} \\ \normalfont Local processing only \\ \code{AppState.online = false}};
+        \node[action, below=1cm of offline] (restore) {\textbf{Network Restored Event} \\ \normalfont Read ``up'' from \code{network.flag}};
+        
+        \node[action, right=1.5cm of lost] (serialize) {1. Save \code{AppState} \\ to \code{offline\_stalls.ser} \\ 2. Pause simulator};
+        \node[action, right=1.5cm of restore] (sync) {1. Gather served orders \\ 2. Sync to \code{sync\_payload.json} \\ 3. Resume simulator};
+
+        % Connections
+        \draw[arrow] (online) -- (lost);
+        \draw[arrow] (lost) -- (offline);
+        \draw[arrow] (offline) -- (restore);
+        \draw[arrow] (restore.west) -- ++(-1.8cm,0) |- (online.west);
+        
+        \draw[arrow] (lost.east) -- (serialize.west);
+        \draw[arrow] (restore.east) -- (sync.west);
+
+    \end{tikzpicture}
+    \caption{Offline Failover and Reconnection Synchronization Flow}
+    \label{fig:failover_flow}
+\end{figure}
+
+\subsection{Detailed State-Transition Walkthrough}
+
+\subsubsection{Transition to Offline Mode}
+When the network monitor detects a drop (transition from online to offline), it triggers the \code{onNetworkLost()} routine:
+\begin{enumerate}
+    \item \textbf{Binary State Preservation}: The daemon invokes the \code{OfflineSerializer} to save a deep binary snapshot of the entire system state, including all stall registrations, queue depths, active orders, and accumulated revenues, writing it to \code{offline\_stalls.ser}.
+    \item \textbf{Flag Setting}: The central application state is updated via \code{appState.setOnline(false)}.
+    \item \textbf{UI Warnings}: The views register this state update. The \code{KitchenView} fades in a bright red warning banner: \textit{``Working offline --- orders are queueing on this device (X cached)''}.
+    \item \textbf{Stream Control}: The order producer is paused to prevent the local queue (capacity 1000) from overflowing during connection drop.
+\end{enumerate}
+
+\subsubsection{Transition to Online Mode (Reconnection \& Sync)}
+When connectivity is restored (transition from offline to online), it triggers the \code{onNetworkRestored()} routine:
+\begin{enumerate}
+    \item \textbf{Flag Setting}: The application state is flipped back via \code{appState.setOnline(true)}. The warning banner in the UI is hidden, and the green ``Online'' status pill is restored.
+    \item \textbf{Served Orders Gathering}: The daemon iterates through the local stall queues and filters all orders that were successfully prepared and completed (\code{OrderStatus.SERVED}) during the offline period.
+    \item \textbf{Sync Serialization}: The list of served orders is compiled, and the \code{SyncClient} writes a synchronization report to \code{sync\_payload.json} containing the order IDs, target stalls, and order totals. In a production environment, this client would perform an HTTP \code{POST} containing the JSON payload to the central Django monolith's database sync endpoint.
+    \item \textbf{Stream Resumption}: The order producer resumes its normal simulated ingest stream.
+\end{enumerate}
+
+\subsection{Testing and Demonstration Interface}
+For testing purposes, the application includes a floating \code{SimulatorControlPanel} containing a ``Network Toggle'' button. Clicking this button writes \code{"up"} or \code{"down"} directly to the \code{network.flag} file. This allows developers to simulate network failover events on demand during live presentations and record clear, reproducible failover sequences.
+
+% Source: docs/features_and_usage_guide.md:138-163
+% Source: src/main/java/com/festival/vendorengine/io/NetworkMonitorDaemon.java:35-43, 175-228
+% Source: Vendor_Engine_Architecture.md:490-545

@@ -1,0 +1,128 @@
+% Section 05: UML Class Diagram & OOP Principles
+
+\section{UML Class Diagram \& OOP Principles}
+\label{sec:uml_and_oop_design}
+
+Object-Oriented Programming (OOP) forms the core architectural foundation of the Vendor Engine. By strictly adhering to OOP guidelines, the system achieves modularity, maintainability, and thread safety.
+
+\subsection{UML Class Diagram}
+Figure~\ref{fig:uml_diagram} shows the structural relations and class definitions for the core business logic, including field access types, interface implementations, and class associations.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        classbox/.style={rectangle, draw, fill=blue!5, text width=5cm, minimum height=1.5cm, align=left, font=\scriptsize},
+        interfacebox/.style={rectangle, draw, fill=green!5, text width=4.5cm, minimum height=1.2cm, align=left, font=\scriptsize},
+        relation/.style={->, >=open triangle 90, thick, draw=black!70},
+        association/.style={->, thick, draw=black!70, dashed},
+        inherits/.style={->, >=triangle 45, thick, draw=black!80}
+    ]
+        % Model Layer
+        \node[classbox] (appstate) {
+            \textbf{AppState} \\
+            - stallMap: ConcurrentHashMap \\
+            - online: volatile boolean \\
+            + isOnline(): boolean \\
+            + setOnline(boolean)
+        };
+        
+        \node[classbox, right=1.2cm of appstate] (stall) {
+            \textbf{Stall} \\
+            - stallId: String \\
+            - stallName: String \\
+            - orderQueue: PriorityBlockingQueue \\
+            - revenueTotal: double \\
+            + enqueue(Order) \\
+            + addRevenue(double) \\
+            + getRevenueTotal(): double
+        };
+        
+        \node[classbox, below=1cm of stall] (order) {
+            \textbf{Order} \\
+            - orderId: String \\
+            - stallId: String \\
+            - items: List$<$LineItem$>$ \\
+            - status: volatile OrderStatus \\
+            + getElapsedMs(): long \\
+            + setStatus(OrderStatus)
+        };
+
+        \node[classbox, right=1.2cm of order] (lineitem) {
+            \textbf{LineItem} (Static Nested) \\
+            - itemName: String \\
+            - quantity: int \\
+            - unitPrice: double \\
+            + getSubtotal(): double
+        };
+
+        % Controller Layer
+        \node[classbox, below=1.2cm of appstate] (controller) {
+            \textbf{OrderController} \\
+            - stallMap: ConcurrentHashMap \\
+            - observers: CopyOnWriteArrayList \\
+            + registerObserver(OrderObserver) \\
+            + routeOrder(Order) \\
+            + transitionStatus(...)
+        };
+        
+        \node[interfacebox, below=1.2cm of controller] (observer) {
+            \textbf{\textit{OrderObserver}} (Interface) \\
+            + onOrderUpdated(Order) \\
+            + onStallSnapshotChanged(Stall)
+        };
+        
+        \node[classbox, right=1.5cm of observer] (view) {
+            \textbf{KitchenView / AdminView} \\
+            + onOrderUpdated(Order) \\
+            + onStallSnapshotChanged(Stall)
+        };
+
+        % Relations
+        \draw[relation] (appstate) -- node[above, font=\tiny] {1..*} (stall);
+        \draw[relation] (stall) -- node[right, font=\tiny] {0..*} (order);
+        \draw[relation] (order) -- node[above, font=\tiny] {1..*} (lineitem);
+        \draw[relation] (controller) -- node[left, font=\tiny] {notifies} (observer);
+        \draw[association] (view) -- node[above, font=\tiny] {implements} (observer);
+        \draw[relation] (controller.north) -- node[left, font=\tiny] {mutates} (appstate.south);
+
+    \end{tikzpicture}
+    \caption{Core Component UML Class Diagram}
+    \label{fig:uml_diagram}
+\end{figure}
+
+\subsection{OOP Design Principles Applied}
+The application applies four fundamental OOP principles to enforce modularity and prevent bugs:
+
+\subsubsection{Encapsulation (State Shielding)}
+Data integrity is maintained by guarding internal fields against unauthorized external mutations. 
+\begin{itemize}
+    \item All model variables (in \code{Order}, \code{Stall}, \code{LineItem}, and \code{AppState}) are marked as \code{private} and \code{final} where possible, allowing read-only access via public getter methods.
+    \item The only mutable state in the domain layer is an order's status (\code{OrderStatus}). This is marked as \code{volatile} in \code{Order.java} and can only be altered via the controller's \code{transitionStatus()} method. No view is permitted to mutate status fields directly.
+    \item The \code{StallDataSource} class implements a read-only facade pattern. It wraps the core stall map and exposes only unmodifiable views and summaries (e.g. sorted list of stall IDs, aggregate revenue totals) to prevent the \code{AdminView} from calling mutation routines.
+\end{itemize}
+
+\subsubsection{Abstraction (Decoupling Interface from Implementation)}
+By separating architectural responsibilities, layers communicate via high-level contracts.
+\begin{itemize}
+    \item The \code{OrderObserver} interface establishes an abstract notification boundary. The \code{OrderController} publishes updates to a generic list of observers without knowing if they represent a CLI log, a GUI table (\code{OrderTableModel}), or custom drawing panels.
+    \item UI rendering details are abstracted away from model processing: classes under the \code{com.festival.vendorengine.model} package contain zero AWT or Swing imports, ensuring they can be reused in any environment.
+\end{itemize}
+
+\subsubsection{Inheritance \& Polymorphism}
+Polymorphic typing is extensively used to build robust classes and custom error flows:
+\begin{itemize}
+    \item The system utilizes a hierarchical exception tree. Recoverable conditions extend checked exception classes (e.g. \code{StallNotFoundException} inherits from \code{Exception}, forcing the UI caller to handle it). Programmatic violations and parsing failures inherit from unchecked exceptions (e.g. \code{OrderProcessingException} extends \code{RuntimeException}).
+    \item The custom GUI views extend Swing containers (\code{KitchenView} and \code{AdminView} inherit from \code{JFrame}; \code{ConfirmLogoutDialog} inherits from \code{JDialog}).
+\end{itemize}
+
+\subsubsection{Composition over Inheritance}
+Rather than extending core data structures, components are built by composing standard structures.
+\begin{itemize}
+    \item \code{Stall} encapsulates a \code{PriorityBlockingQueue<Order>} instead of extending it. This prevents exposing queue management APIs directly to outside classes and ensures thread safety is fully handled within the \code{Stall} boundary.
+\end{itemize}
+
+% Source: src/main/java/com/festival/vendorengine/model/Order.java
+% Source: src/main/java/com/festival/vendorengine/model/Stall.java
+% Source: src/main/java/com/festival/vendorengine/controller/StallDataSource.java
+% Source: src/main/java/com/festival/vendorengine/controller/OrderObserver.java
+% Source: Vendor_Engine_Architecture.md:52-57, 198-220

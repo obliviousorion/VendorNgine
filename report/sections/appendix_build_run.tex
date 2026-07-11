@@ -1,0 +1,69 @@
+% Appendix A: Build & Run Instructions
+
+\section{Appendix A: Build \& Run Instructions}
+\label{sec:appendix_build_run}
+
+This appendix provides the compilation, testing, packaging, and execution instructions for the Vendor Engine.
+
+\subsection{System Prerequisites}
+The application requires the following development tools installed on the local system:
+\begin{itemize}
+    \item \textbf{Java Development Kit (JDK)}: Version 17 or higher (the project utilizes Java 17 features, such as switch pattern matching).
+    \item \textbf{Apache Maven}: Version 3.8 or higher.
+\end{itemize}
+
+\subsection{Standard Build and Test Lifecycle Commands}
+All compilation and lifecycle phases are managed via the standard Maven terminal wrapper:
+\begin{description}
+    \item[Clean Workspaces]: Deletes the target compiler outputs to ensure a fresh build.
+    \begin{lstlisting}[language=bash]
+mvn clean
+    \end{lstlisting}
+    \item[Compile Sources]: Compiles all source files in the codebase.
+    \begin{lstlisting}[language=bash]
+mvn compile
+    \end{lstlisting}
+    \item[Execute Unit Tests]: Runs the JUnit 5 test suite and generates the code coverage data.
+    \begin{lstlisting}[language=bash]
+mvn test
+    \end{lstlisting}
+    \item[Package Executable FAT JAR]: Compiles and packages the application, along with its manifest configurations, into a runnable archive located inside the \code{target/} folder.
+    \begin{lstlisting}[language=bash]
+mvn package
+    \end{lstlisting}
+\end{description}
+
+\subsection{Running the Application}
+Once packaged, the Vendor Engine can be executed from the root directory using the command line:
+\begin{lstlisting}[language=bash]
+java -jar target/vendor-engine-1.0.jar
+\end{lstlisting}
+Running the JAR starts the Swing \code{LoginView} interface. By default, the developer simulation panel is displayed concurrently to allow runtime manipulation.
+
+\subsection{Simulating Network Failover During Live Demos}
+To test the offline failover and synchronization features dynamically without disconnecting physical network cables, the \code{NetworkMonitorDaemon} reads the \code{network.flag} file every second. 
+The presenter can write values to this file during a live demo to simulate connectivity changes:
+\begin{itemize}
+    \item \textbf{Simulate Connection Lost}: Write ``down'' to the flag file.
+    \begin{lstlisting}[language=bash]
+# Windows PowerShell
+"down" | Out-File -Encoding ascii network.flag
+
+# Unix / Git Bash
+echo down > network.flag
+    \end{lstlisting}
+    This triggers immediate local serialization, updates the GUI banner to red, and pauses the simulator.
+    \item \textbf{Simulate Reconnection}: Write ``up'' to the flag file.
+    \begin{lstlisting}[language=bash]
+# Windows PowerShell
+"up" | Out-File -Encoding ascii network.flag
+
+# Unix / Git Bash
+echo up > network.flag
+    \end{lstlisting}
+    This triggers order synchronization to \code{sync\_payload.json}, hides the warning banner, and resumes order ingestion.
+\end{itemize}
+
+% Source: README.md:198-217
+% Source: Vendor_Engine_Architecture.md:706-724
+% Source: src/main/java/com/festival/vendorengine/io/NetworkMonitorDaemon.java:27-34, 128-138

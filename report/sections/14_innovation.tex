@@ -1,0 +1,40 @@
+% Section 14: Innovation & Additional Enhancements
+
+\section{Innovation \& Additional Enhancements}
+\label{sec:innovation}
+
+Rather than developing a minimal command-line utility or a standard database client, the Vendor Engine incorporates several visual and user experience (UX) innovations tailored to the realities of a fast-paced festival kitchen floor.
+
+\subsection{Glanceable Kitchen UX: The Docket Ring}
+In a loud, smoky, high-pressure festival kitchen, requiring a worker to read individual text timers (e.g. ``Elapsed: 24s'', ``Elapsed: 110s'') on a table is inefficient. The primary UX innovation in the Vendor Engine is the \textbf{Docket Ring}:
+\begin{itemize}
+    \item Each order card displays a custom radial progress ring surrounding the order details.
+    \item The ring fills dynamically as the order ages, transforming from fresh green to warm amber, and eventually to hot red when the preparation time exceeds the target SLA.
+    \item This visual representation provides immediate, glanceable situational awareness. An operator can scan a board of 20 active orders and instantly identify which tickets are approaching critical delay without reading a single character of text.
+\end{itemize}
+
+\subsection{Contextual Kanban Workspace Layout}
+Traditional databases display queues as flat data tables, placing action buttons (Accept, Mark Ready, Serve, Cancel) on a global toolbar at the bottom of the screen. This requires users to select a row, move their cursor to the toolbar, click the action, and return. The Vendor Engine resolves this through:
+\begin{enumerate}
+    \item \textbf{Three-Column Kanban Board}: Active orders are organized into columns representing status (Pending, Accepted, Ready to Serve).
+    \item \textbf{Card-Integrated Contextual Actions}: Each order is displayed as a physical paper card containing its own primary button located beside the items (e.g. ``Accept Order'' on Pending, ``Mark Ready'' on Accepted). The action is placed next to the data it modifies, reducing user error.
+    \item \textbf{Collapsible Completed Strip}: Served and cancelled orders are moved to a collapsed panel at the bottom of the dashboard. This keeps the active board clear of visual noise while allowing operators to inspect transaction history on demand.
+\end{enumerate}
+
+\subsection{Tactile Theme Styling: Ticket Card Border}
+To make the application intuitive for temporary workers, the styling leans into food service themes. 
+The custom \code{TicketCardBorder} uses custom Graphics2D shapes to paint dashed header dividers and dual circular ticket punch-notches. 
+This provides a realistic ticket printer look, helping workers associate digital cards with physical order slips.
+
+\subsection{Administrative Bottleneck Diagnostics}
+For merchant administrators, the sidebar uses color-coded status dots (green, amber, and red) backed by queue depth metrics:
+\begin{itemize}
+    \item \textbf{Green Status}: Queue depth $<$ 5 orders (healthy stall).
+    \item \textbf{Amber Status}: Queue depth 5--10 orders (warning).
+    \item \textbf{Red Status}: Queue depth $>$ 10 orders (stall backlogged).
+\end{itemize}
+This allows administrators to identify struggling stalls instantly without clicking through individual dashboards. 
+Additionally, the custom Graphics2D charts (live revenue trend and stall ranking bars) provide real-time metrics without loading external charting libraries, keeping the application self-contained.
+
+% Source: archive/DESIGN-NOTES.md:8-24, 57-106
+% Source: docs/features_and_usage_guide.md:49-94

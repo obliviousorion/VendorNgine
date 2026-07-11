@@ -1,0 +1,48 @@
+% Appendix C: Test Suite Summary Table
+
+\section{Appendix C: Test Suite Summary Table}
+\label{sec:appendix_test_summary}
+
+This appendix provides a summary of the JUnit 5 test suite executing against the Vendor Engine. The suite is run using the command \code{mvn test} and compiles all verification tests.
+
+\subsection{Test Summary Table}
+Table~\ref{tab:test_summary} lists each test class, the key scenarios verified, the total number of test cases, and their execution status.
+
+\begin{table}[H]
+    \centering
+    \caption{JUnit 5 Test Suite Execution Summary}
+    \begin{tabularx}{\linewidth}{p{4.0cm}Xcl}
+        \toprule
+        \textbf{Test Class File} & \textbf{Key Verification Scenarios} & \textbf{Tests} & \textbf{Status} \\
+        \midrule
+        \code{OrderTest} & LineItem subtotals, order getter values, volatile status updates, enum bounds coverage. & 4 & \textbf{Pass} \\
+        \code{OrderComparatorTest} & VIP priority ranking, FIFO chronological sorting, mathematical anti-symmetry. & 14 & \textbf{Pass} \\
+        \code{AppStateSerializationTest} & Object graph serialization/deserialization, AppState round-trip deep equality. & 2 & \textbf{Pass} \\
+        \code{OrderProducerConsumerTest} & Concurrent 8-thread consumer stress load processing 500 orders using CountDownLatch. & 1 & \textbf{Pass} \\
+        \code{OrderControllerTest} & Order routing, state transitions (Pending $\rightarrow$ Served), revenue calculation updates. & 16 & \textbf{Pass} \\
+        \code{StallDataSourceTest} & Read-only facades, sorted stall list lookups, global revenue aggregations. & 2 & \textbf{Pass} \\
+        \code{JsonUtilTest} & Hand-rolled recursive-descent parsing, escape chars, decimal, malformed format errors. & 9 & \textbf{Pass} \\
+        \code{OfflineSerializerTest} & State saving/loading, missing serialization caches, file lock write interruptions. & 7 & \textbf{Pass} \\
+        \code{SyncClientTest} & Manual StringBuilder JSON creation, directory write errors. & 4 & \textbf{Pass} \\
+        \code{NetworkMonitorDaemonTest} & File-based heartbeat polling, failover serialization, sync served orders filtering. & 5 & \textbf{Pass} \\
+        \code{HeartbeatEncodingTest} & BOM detection (UTF-8, UTF-16LE, UTF-16BE) and raw file parsing. & 5 & \textbf{Pass} \\
+        \midrule
+        \textbf{Total Test Cases} & & \textbf{69} & \textbf{PASS} \\
+        \bottomrule
+    \end{tabularx}
+    \label{tab:test_summary}
+\end{table}
+
+\subsection{Testing Execution Details}
+All tests are configured under the Maven Surefire configuration to run isolated inside the JVM. 
+The test logs are redirected to clean local files inside the \code{log/} folder:
+\begin{itemize}
+    \item \textbf{JVM Native Errors}: Redirected to \code{log/hs\_err\_pid*.log}.
+    \item \textbf{Surefire Replay Logs}: Redirected to \code{log/replay\_pid*.log}.
+    \item \textbf{General System Output}: Redirected to \code{log/app.log}.
+\end{itemize}
+This ensures that the project root directory remains clean and uncluttered.
+
+% Source: report/VERIFIED_FACTS.md:105-121
+% Source: README.md:221-236
+% Source: Vendor_Engine_Architecture.md:689-702

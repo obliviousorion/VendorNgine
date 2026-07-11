@@ -1,0 +1,68 @@
+% Section 07: Concurrency Model
+
+\section{Concurrency Model \& No-Deadlock Argument}
+\label{sec:concurrency_model}
+
+High-concurrency order routing is the core technical challenge addressed by the Vendor Engine. The system must process rapid order flows without dropping data, freezing the GUI, or encountering race conditions and thread lockups.
+
+\subsection{Concurrency and Threading Infrastructure}
+The application segregates execution responsibilities across specialized threads. Table~\ref{tab:threading_model} summarizes how threads interact with shared states and the synchronization mechanisms used to prevent race conditions.
+
+\begin{table}[H]
+    \centering
+    \caption{Threading and Synchronization Summary}
+    \begin{tabularx}{\linewidth}{p{2.8cm}p{2.8cm}p{3.5cm}X}
+        \toprule
+        \textbf{Component} & \textbf{Thread(s)} & \textbf{Shared State Touched} & \textbf{Synchronization Mechanism} \\
+        \midrule
+        \code{OrderProducer} & 1 Dedicated Thread & Ingestion \code{BlockingQueue} & Blocking operations (\code{put()}) \\
+        \code{OrderConsumer} $\times$8 & 8 Pool Threads & Ingestion \code{BlockingQueue}, \code{StallMap} & Blocking operations (\code{take()}), lock-free concurrent map APIs \\
+        \code{Stall.orderQueue} & Consumers \& EDT & \code{PriorityBlockingQueue} & Built-in lock-free queue locking \\
+        \code{OrderController} & Consumers \& Daemon & \code{observers} list & \code{CopyOnWriteArrayList} copy-on-write iteration \\
+        \code{NetworkMonitor} & 1 Daemon Thread & \code{AppState.online} & \code{volatile} memory visibility \\
+        Swing Views & Event Dispatch (EDT) & GUI Components & EDT Funnel (\code{SwingUtilities.invokeLater}) \\
+        \bottomrule
+    \end{tabularx}
+    \label{tab:threading_model}
+\end{table}
+
+\subsection{The Structural No-Deadlock Argument}
+A deadlock occurs when two or more threads are blocked forever, waiting for each other in a circular dependency. According to Coffman's conditions, a deadlock requires four simultaneous conditions: Mutual Exclusion, Hold and Wait, No Preemption, and Circular Wait. 
+
+The Vendor Engine is structurally guaranteed to be deadlock-free because it violates the \textbf{Circular Wait} condition through specific design constraints:
+\begin{enumerate}
+    \item \textbf{Single-Lock Acquisition Policy}: No method in the entire codebase attempts to acquire more than one lock concurrently. There are no nested \code{synchronized} blocks, nor are there nested lock requests using concurrent utility locks.
+    \item \textbf{Lock-Free Concurrent Containers}: Shared collections (\code{ConcurrentHashMap}, \code{CopyOnWriteArrayList}, \code{LinkedBlockingQueue}, and \code{PriorityBlockingQueue}) are thread-safe and manage their own internal locking mechanisms internally. The application threads simply invoke public APIs, ensuring that threads never lock up waiting on custom lock structures.
+    \item \textbf{Isolated Critical Sections}: The only synchronized blocks written in the custom application code are the revenue mutation and retrieval methods inside \code{Stall.java}:
+    \begin{lstlisting}[language=Java]
+public synchronized void addRevenue(double amount) {
+    revenueTotal += amount;
+}
+public synchronized double getRevenueTotal() {
+    return revenueTotal;
+}
+    \end{lstlisting}
+    These methods contain a single instruction operating on a primitive variable (\code{revenueTotal}). The lock is held for a sub-microsecond period, is completely uncontended, and makes zero nested calls, eliminating lock cycles.
+\end{enumerate}
+Because circular lock dependencies cannot form, deadlocks are mathematically impossible in this system.
+
+\subsection{Memory Visibility Constraints}
+Thread safety requires not just exclusion but also visibility (guaranteeing that changes made by one thread are immediately visible to others). This is enforced via the \code{volatile} keyword:
+\begin{itemize}
+    \item \code{Order.status}: Marked as \code{volatile} in \code{Order.java:26}. Since status transitions are computed by consumer pool threads but read by the Event Dispatch Thread (EDT) during GUI table model refreshes, \code{volatile} guarantees that the EDT reads the most recently written status from memory rather than a stale cache value.
+    \item \code{AppState.online}: Marked as \code{volatile} in \code{AppState.java}. The \code{NetworkMonitorDaemon} thread writes to this flag, while the EDT reads it to display red/green network pills.
+\end{itemize}
+
+\subsection{Daemon Thread Selection}
+The \code{NetworkMonitorDaemon} thread executes outside the main fixed pool. It is initialized explicitly as a daemon thread:
+\begin{lstlisting}[language=Java]
+Thread t = new Thread(this, "network-monitor-daemon");
+t.setDaemon(true);
+t.start();
+\end{lstlisting}
+This prevents the JVM from hanging during exit: the JVM terminates automatically when only daemon threads remain, allowing the shutdown hook to clean up the pool and close log files safely.
+
+% Source: src/main/java/com/festival/vendorengine/concurrency/ExecutorServiceManager.java:31-80
+% Source: src/main/java/com/festival/vendorengine/io/NetworkMonitorDaemon.java:44-54, 233-252
+% Source: src/main/java/com/festival/vendorengine/model/Order.java:26
+% Source: Vendor_Engine_Architecture.md:146-151, 628-644

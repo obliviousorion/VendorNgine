@@ -1,0 +1,40 @@
+% Section 01: Introduction & Operational Context
+
+\section{Introduction \& Operational Context}
+\label{sec:introduction}
+
+This report describes the design and implementation of the \textbf{High-Concurrency Vendor Engine}, a software component developed as part of the CS F213 Object Oriented Programming course project at BITS Pilani (Summer Term 2026). The project forms part of Track 4 (Application Development with Java Frameworks), focusing on building robust, high-performance, and resilient digital solutions to address real-world operational bottlenecks.
+
+\subsection{Operational Context}
+BITS Pilani's annual cultural festival is a large-scale event serving a user base of 5,000--6,000 active participants. The digital ecosystem supporting the festival facilitates real-time operations, including:
+\begin{itemize}
+    \item Ticketing and entry validation.
+    \item Event scheduling and coordination across 90+ events.
+    \item Food ordering at multiple vendor stalls.
+    \item Digital wallet transactions totaling over ₹1.5+ crore in value.
+    \item Live dashboards displaying aggregate sales, event progress, and crowd distribution.
+\end{itemize}
+
+The central backend of this ecosystem is implemented as a Django monolith, supported by PostgreSQL for persistent storage, Redis as an in-memory cache, Celery for asynchronous background task execution, and WebSockets for real-time notifications. The primary user interface for participants is a mobile application.
+
+\subsection{The Bottleneck Challenge}
+During peak festival hours, food stalls experience an intense order overload. In this high-throughput scenario, the central Django monolith and its WebSocket handlers frequently encounter performance degradation. The major operational pain points identified include:
+\begin{enumerate}
+    \item \textbf{WebSocket Connection Drops}: Simultaneous order streams from thousands of users strain the central WebSocket server, leading to connection dropouts and order delivery delays.
+    \item \textbf{Stall App Lag}: The vendor-facing application lags due to synchronous network dependency, causing long waiting lines, order processing delays, and incorrect revenue reporting.
+    \item \textbf{Lack of Offline Resilience}: In the event of a Wi-Fi or network failure on the festival floor, vendors lose the ability to accept, process, or track orders. This leads to substantial data loss, double-booking, and financial discrepancies.
+\end{enumerate}
+
+\subsection{Proposed Solution: The Vendor Engine}
+To resolve these bottlenecks, the \textbf{High-Concurrency Vendor Engine} has been developed. It is a lightweight, local desktop application built in Java 17 that runs on-premise at each vendor stall. By moving order routing, prioritization, and queue management to local vendor machines, the system eliminates direct WebSocket dependencies during peak operation. 
+
+Key features of the Vendor Engine include:
+\begin{itemize}
+    \item \textbf{High-Concurrency Ingestion}: An 8-thread consumer pool capable of parsing and routing up to 50 simulated orders/second.
+    \item \textbf{Strict Prioritization}: A custom queue sorting strategy that prioritizes VIP festival-goers and handles tie-breakers chronologically (First-In, First-Out).
+    \item \textbf{Autonomous Offline Failover}: An independent network monitoring daemon that detects connectivity drops and serializes the system state locally to prevent data loss.
+    \item \textbf{Automatic Synchronization}: On reconnection, the daemon automatically compiles and uploads served orders back to the central monolith, restoring consistency.
+\end{itemize}
+
+% Source: archive/Vendor_Engine_Project_Context.md:5-18
+% Source: README.md:1-16
