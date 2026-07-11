@@ -133,8 +133,6 @@ public class StallPanel extends JPanel {
                     if (order != null) {
                         lastSelectedOrderId = order.getOrderId();
                     }
-                } else {
-                    lastSelectedOrderId = null;
                 }
                 handleSelectionChanged();
             }
