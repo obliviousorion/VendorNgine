@@ -142,9 +142,29 @@ public class NetworkMonitorDaemon implements Runnable {
             if (!java.nio.file.Files.exists(path)) {
                 return false;
             }
-            String content = java.nio.file.Files.readString(path);
-            // Strip null bytes and BOM which are common in UTF-16 LE output from PowerShell
-            content = content.replace("\0", "").replace("\uFEFF", "").trim();
+            byte[] bytes = java.nio.file.Files.readAllBytes(path);
+            if (bytes.length == 0) {
+                return false;
+            }
+
+            java.nio.charset.Charset charset = java.nio.charset.StandardCharsets.UTF_8;
+            int offset = 0;
+
+            // Detect Byte Order Mark (BOM) to select correct Charset
+            if (bytes.length >= 2) {
+                if (bytes[0] == (byte) 0xFF && bytes[1] == (byte) 0xFE) {
+                    charset = java.nio.charset.Charset.forName("UTF-16LE");
+                    offset = 2;
+                } else if (bytes[0] == (byte) 0xFE && bytes[1] == (byte) 0xFF) {
+                    charset = java.nio.charset.Charset.forName("UTF-16BE");
+                    offset = 2;
+                } else if (bytes.length >= 3 && bytes[0] == (byte) 0xEF && bytes[1] == (byte) 0xBB && bytes[2] == (byte) 0xBF) {
+                    charset = java.nio.charset.StandardCharsets.UTF_8;
+                    offset = 3;
+                }
+            }
+
+            String content = new String(bytes, offset, bytes.length - offset, charset).trim();
             return content.equalsIgnoreCase("up");
         } catch (IOException e) {
             // Missing or unreadable flag file → treat as offline.
