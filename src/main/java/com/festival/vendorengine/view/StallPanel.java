@@ -35,6 +35,7 @@ public class StallPanel extends JPanel {
     private final OrderTableModel tableModel;
     private final JTable table;
     private final Timer elapsedTimer;
+    private String lastSelectedOrderId = null;
 
     // Action buttons
     private JButton btnAccept;
@@ -122,11 +123,41 @@ public class StallPanel extends JPanel {
         
         add(actionsContainer, BorderLayout.EAST);
 
-        // 4. Wire selection listener for button state toggling
+        // 4. Wire selection listener for button state toggling and tracking selected ID
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
+                int selectedRow = table.getSelectedRow();
+                if (selectedRow >= 0 && selectedRow < table.getRowCount()) {
+                    int modelRow = table.convertRowIndexToModel(selectedRow);
+                    Order order = tableModel.getOrderAt(modelRow);
+                    if (order != null) {
+                        lastSelectedOrderId = order.getOrderId();
+                    }
+                } else {
+                    lastSelectedOrderId = null;
+                }
                 handleSelectionChanged();
             }
+        });
+
+        // Restore selection by unique Order ID whenever table data is updated/reordered
+        tableModel.addTableModelListener(e -> {
+            javax.swing.SwingUtilities.invokeLater(() -> {
+                if (lastSelectedOrderId != null) {
+                    int targetRow = -1;
+                    for (int i = 0; i < table.getRowCount(); i++) {
+                        int modelRow = table.convertRowIndexToModel(i);
+                        Order order = tableModel.getOrderAt(modelRow);
+                        if (order != null && lastSelectedOrderId.equals(order.getOrderId())) {
+                            targetRow = i;
+                            break;
+                        }
+                    }
+                    if (targetRow >= 0) {
+                        table.setRowSelectionInterval(targetRow, targetRow);
+                    }
+                }
+            });
         });
 
         // 5. Wire action listeners for status transitions
@@ -143,12 +174,7 @@ public class StallPanel extends JPanel {
             if (table.isEditing()) {
                 table.getCellEditor().stopCellEditing();
             }
-            int selectedRow = table.getSelectedRow();
             tableModel.refreshOrders();
-            // restore selection
-            if (selectedRow >= 0 && selectedRow < table.getRowCount()) {
-                table.setRowSelectionInterval(selectedRow, selectedRow);
-            }
         });
         elapsedTimer.start();
     }

@@ -82,17 +82,15 @@ public class Main {
         }
         OrderProducer producer = new OrderProducer(queue, simulator);
 
-        // Submit 8 consumer tasks to the ExecutorServiceManager fixed thread pool (Section 6.3)
+        // Submit 8 consumer tasks and 1 producer task to the ExecutorServiceManager thread pool (Section 6.3)
         ExecutorServiceManager threadManager = ExecutorServiceManager.getInstance();
+        threadManager.submit(producer);
+        System.out.println("[Main] Started order producer task in the thread pool.");
+
         for (int i = 0; i < 8; i++) {
             threadManager.submit(new OrderConsumer(queue, controller));
         }
-        System.out.println("[Main] Started 8 order consumers in the fixed thread pool.");
-
-        // Start 1 producer thread (runs as a dedicated thread per Section 11)
-        Thread producerThread = new Thread(producer, "order-producer");
-        producerThread.start();
-        System.out.println("[Main] Started dedicated order producer thread.");
+        System.out.println("[Main] Started 8 order consumers in the thread pool.");
 
         // 6. Initialize IO Failover Components and start Network Monitor Daemon (Section 8)
         OfflineSerializer serializer = new OfflineSerializer(AppConfig.OFFLINE_SER_PATH);

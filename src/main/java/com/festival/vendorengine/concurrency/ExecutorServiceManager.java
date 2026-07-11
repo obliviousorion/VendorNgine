@@ -33,7 +33,7 @@ public final class ExecutorServiceManager {
     // Eagerly created at class-load time — thread-safe by JLS §12.4, no lock needed.
     private static final ExecutorServiceManager INSTANCE = new ExecutorServiceManager();
 
-    private final ExecutorService pool = Executors.newFixedThreadPool(8);
+    private final ExecutorService pool = Executors.newFixedThreadPool(16);
 
     private ExecutorServiceManager() {
         // Private constructor: enforces singleton; prevents accidental
