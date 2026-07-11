@@ -224,4 +224,13 @@ class OfflineSerializerTest {
         assertEquals(75.50, loaded.getStallMap().get("S02").getRevenueTotal(), 1e-9);
         assertEquals(999L, loaded.getLastSyncedAtMillis());
     }
+
+    @Test
+    void testConstructorsAndGetFilePath() {
+        OfflineSerializer defaultSer = new OfflineSerializer();
+        assertEquals(OfflineSerializer.DEFAULT_FILE_NAME, defaultSer.getFilePath());
+
+        OfflineSerializer stringSer = new OfflineSerializer("some_path.ser");
+        assertEquals("some_path.ser", stringSer.getFilePath());
+    }
 }
