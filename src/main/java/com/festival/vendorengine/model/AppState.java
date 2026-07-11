@@ -54,6 +54,19 @@ public class AppState implements Serializable {
         return online;
     }
 
+    /**
+     * Flips the connectivity flag.
+     *
+     * <p>Only {@code NetworkMonitorDaemon} should call this method.
+     * The field is {@code volatile}, so the write is immediately visible
+     * to all other threads (including the EDT) without any lock.
+     *
+     * @param online {@code true} if the network heartbeat is reachable
+     */
+    public void setOnline(boolean online) {
+        this.online = online;
+    }
+
     public long getLastSyncedAtMillis() {
         return lastSyncedAtMillis;
     }
