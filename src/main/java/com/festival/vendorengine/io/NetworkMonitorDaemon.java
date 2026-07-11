@@ -164,7 +164,7 @@ public class NetworkMonitorDaemon implements Runnable {
                 }
             }
 
-            String content = new String(bytes, offset, bytes.length - offset, charset).trim();
+            String content = new String(bytes, offset, bytes.length - offset, charset).replace("\"", "").trim();
             return content.equalsIgnoreCase("up");
         } catch (IOException e) {
             // Missing or unreadable flag file → treat as offline.

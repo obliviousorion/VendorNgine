@@ -88,8 +88,9 @@ public class KitchenView extends JFrame implements OrderObserver {
 
     private void updateNetworkBanner() {
         boolean online = appState.isOnline();
-        if (bannerPanel.isVisible() == online) {
-            bannerPanel.setVisible(!online);
+        boolean shouldBeVisible = !online;
+        if (bannerPanel.isVisible() != shouldBeVisible) {
+            bannerPanel.setVisible(shouldBeVisible);
             revalidate();
             repaint();
         }
